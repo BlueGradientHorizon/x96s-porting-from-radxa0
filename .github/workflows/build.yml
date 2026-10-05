@@ -136,8 +136,9 @@ jobs:
         timeout-minutes: 10
         run: |
           sudo apt-get update
-          # NOTE: see uboot job - the unversioned aarch64 cross-gcc/ld
-          # on Ubuntu 26.04 are broken stubs; use gcc-14 + probed ld.
+          # Same prefix as the proven recipe (aarch64-linux-gnu-), but
+          # the unversioned cross-gcc/ld on Ubuntu 26.04 are broken
+          # stubs - shadow them in PATH with verified real tools.
           sudo apt-get install -y build-essential git bc bison flex \
             libssl-dev libelf-dev gcc-14-aarch64-linux-gnu \
             gcc-arm-linux-gnueabihf
@@ -153,15 +154,11 @@ jobs:
           [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
           echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
           mkdir -p "$HOME/.local/bin"
-          for t in gcc ld objcopy objdump ar nm strip readelf; do
-            ln -sf /usr/bin/aarch64-linux-gnu-$t "$HOME/.local/bin/aarch64-none-elf-$t"
+          ln -sf "$GCC14" "$HOME/.local/bin/aarch64-linux-gnu-gcc"
+          ln -sf "$LD_REAL" "$HOME/.local/bin/aarch64-linux-gnu-ld"
+          for t in objcopy objdump ar nm strip readelf cpp; do
+            ln -sf /usr/bin/aarch64-linux-gnu-$t "$HOME/.local/bin/aarch64-linux-gnu-$t"
           done
-          printf '%s\n' '#!/bin/bash' \
-            "[ -x '$GCC14' ] || { echo 'FATAL: $GCC14 gone' >&2; exit 127; }" \
-            "exec '$GCC14' \"\$@\"" \
-            >"$HOME/.local/bin/aarch64-none-elf-gcc"
-          ln -sf "$LD_REAL" "$HOME/.local/bin/aarch64-none-elf-ld"
-          chmod +x "$HOME/.local/bin/aarch64-none-elf-gcc"
           echo "$HOME/.local/bin" >>"$GITHUB_PATH"
       - name: Clone kernel at the nightly's exact commit
         run: |
@@ -203,11 +200,11 @@ jobs:
           else
             cp ../x96s/dotconfig .config
           fi
-          make ARCH=arm64 CROSS_COMPILE=aarch64-none-elf- \
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- olddefconfig
-          make ARCH=arm64 CROSS_COMPILE=aarch64-none-elf- \
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- modules_prepare
-          make ARCH=arm64 CROSS_COMPILE=aarch64-none-elf- \
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- \
             KCFLAGS="-Wno-error -Wno-error=implicit-function-declaration -Wno-error=implicit-int" \
             modules -j"$(nproc)"
@@ -220,7 +217,7 @@ jobs:
           python3 ../x96s/apply_x96s.py "$PWD/rtl8723bs"
           cd rtl8723bs
           make KSRC="$GITHUB_WORKSPACE/k" ARCH=arm64 \
-            CROSS_COMPILE=aarch64-none-elf- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- CONFIG_POWER_SAVING=n \
             USER_EXTRA_CFLAGS="-Wno-error -Wno-error=header-guard -Wno-error=address -Wno-error=format -Wno-error=stringop-overflow -Wno-error=stringop-truncation -Wno-error=implicit-fallthrough -Wno-error=unused-but-set-variable -Wno-error=misleading-indentation -Wno-error=comment -Wno-error=return-mismatch"
           ls -l dhd.ko
