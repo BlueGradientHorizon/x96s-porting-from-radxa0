@@ -244,17 +244,19 @@ jobs:
             | sudo tee /usr/local/bin/aarch64-none-elf-ld >/dev/null
           sudo chmod +x /usr/local/bin/aarch64-none-elf-ld
       - name: Diagnose cross compilers
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
-          ls -l /usr/bin/aarch64-linux-gnu-* /usr/bin/arm-linux-gnueabihf-* || true
-          file /usr/bin/aarch64-linux-gnu-gcc || true
-          readlink -f /usr/bin/aarch64-linux-gnu-gcc || true
-          for c in /usr/bin/aarch64-linux-gnu-gcc-15 /usr/bin/aarch64-linux-gnu-gcc-14 /usr/bin/aarch64-linux-gnu-gcc; do
-            echo "== $c"
-            timeout 30 "$c" -dumpversion; echo "rc=$?"
-          done
-          echo "== wrapper probe:"
-          timeout 30 aarch64-none-elf-gcc -dumpversion; echo "rc=$?"
+          echo "== stub content:"
+          cat /usr/bin/aarch64-linux-gnu-gcc-15 || true
+          echo "== try gcc-14 cross package:"
+          sudo apt-get install -y gcc-14-aarch64-linux-gnu || true
+          ls -l /usr/bin/aarch64-linux-gnu-gcc-14 2>/dev/null || true
+          timeout -k 5 30 /usr/bin/aarch64-linux-gnu-gcc-14 -dumpversion; echo "rc=$?"
+          echo "== g++ driver size:"
+          ls -l /usr/bin/aarch64-linux-gnu-g++-15 2>/dev/null || true
+          timeout -k 5 30 /usr/bin/aarch64-linux-gnu-g++-15 -dumpversion; echo "rc=$?"
+          echo "== cc1 present:"
+          ls -l /usr/lib/gcc-cross/aarch64-linux-gnu/*/cc1 2>/dev/null || true
       - name: Clone sources at pinned commits
         run: |
           mkdir -p ub && cd ub
