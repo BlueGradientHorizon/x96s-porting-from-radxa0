@@ -339,6 +339,12 @@ jobs:
           fi
           test "$(strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750' || true)" = 1
           test "$(strings build/u-boot.bin | grep -c 'run try_auto_burn' || true)" = 0
+      - name: Upload uboot build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uboot-make-log
+          path: /tmp/uboot-make.log
       - name: Pack FIP
         run: |
           cd ub/u-boot_build
