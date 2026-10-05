@@ -280,6 +280,12 @@ jobs:
             echo "--- alive $(date -u +%H:%M:%S), log lines: $(wc -l </tmp/uboot-make.log)"
             tail -n 5 /tmp/uboot-make.log
             ps -o pid,etime,cmd -p "$MPID"
+            echo "--- children tree:"
+            ps -ef --forest | grep -B2 -A8 'make u-boot' | head -n 30
+            echo "--- wchan of make and children:"
+            for p in "$MPID" $(pgrep -P "$MPID"); do
+              echo "$p: $(cat /proc/$p/wchan 2>/dev/null) :: $(tr '\0' ' ' </proc/$p/cmdline 2>/dev/null)"
+            done
           done
           wait "$MPID"
           echo "--- make done, tail:"
