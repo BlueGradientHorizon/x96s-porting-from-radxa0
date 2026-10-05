@@ -1,0 +1,143 @@
+--- a/os_dep/linux/rtw_proc.c
++++ b/os_dep/linux/rtw_proc.c
+@@ -66,7 +66,7 @@
+ }
+ 
+ inline struct proc_dir_entry *rtw_proc_create_entry(const char *name, struct proc_dir_entry *parent,
+-	const struct proc_ops *proc_ops, void * data)
++	const struct file_operations *proc_ops, void * data)
+ {
+ 	struct proc_dir_entry *entry;
+ 
+@@ -234,20 +234,20 @@
+ 	return -EROFS;
+ }
+ 
+-static const struct proc_ops rtw_drv_proc_seq_proc_ops = {
+-	.proc_open = rtw_drv_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = seq_release,
+-	.proc_write = rtw_drv_proc_write,
++static const struct file_operations rtw_drv_proc_seq_proc_ops = {
++	.open = rtw_drv_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = seq_release,
++	.write = rtw_drv_proc_write,
+ };
+ 
+-static const struct proc_ops rtw_drv_proc_sseq_proc_ops = {
+-	.proc_open = rtw_drv_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = single_release,
+-	.proc_write = rtw_drv_proc_write,
++static const struct file_operations rtw_drv_proc_sseq_proc_ops = {
++	.open = rtw_drv_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++	.write = rtw_drv_proc_write,
+ };
+ 
+ int rtw_drv_proc_init(void)
+@@ -2981,20 +2981,20 @@
+ 	return -EROFS;
+ }
+ 
+-static const struct proc_ops rtw_adapter_proc_seq_proc_ops = {
+-	.proc_open = rtw_adapter_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = seq_release,
+-	.proc_write = rtw_adapter_proc_write,
++static const struct file_operations rtw_adapter_proc_seq_proc_ops = {
++	.open = rtw_adapter_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = seq_release,
++	.write = rtw_adapter_proc_write,
+ };
+ 
+-static const struct proc_ops rtw_adapter_proc_sseq_proc_ops = {
+-	.proc_open = rtw_adapter_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = single_release,
+-	.proc_write = rtw_adapter_proc_write,
++static const struct file_operations rtw_adapter_proc_sseq_proc_ops = {
++	.open = rtw_adapter_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++	.write = rtw_adapter_proc_write,
+ };
+ 
+ int proc_get_odm_adaptivity(struct seq_file *m, void *v)
+@@ -3151,20 +3151,20 @@
+ 	return -EROFS;
+ }
+ 
+-static const struct proc_ops rtw_odm_proc_seq_proc_ops = {
+-	.proc_open = rtw_odm_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = seq_release,
+-	.proc_write = rtw_odm_proc_write,
++static const struct file_operations rtw_odm_proc_seq_proc_ops = {
++	.open = rtw_odm_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = seq_release,
++	.write = rtw_odm_proc_write,
+ };
+ 
+-static const struct proc_ops rtw_odm_proc_sseq_proc_ops = {
+-	.proc_open = rtw_odm_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = single_release,
+-	.proc_write = rtw_odm_proc_write,
++static const struct file_operations rtw_odm_proc_sseq_proc_ops = {
++	.open = rtw_odm_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++	.write = rtw_odm_proc_write,
+ };
+ 
+ struct proc_dir_entry *rtw_odm_proc_init(struct net_device *dev)
+@@ -3289,20 +3289,20 @@
+ 	return -EROFS;
+ }
+ 
+-static const struct proc_ops rtw_mcc_proc_seq_proc_ops = {
+-	.proc_open = rtw_mcc_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = seq_release,
+-	.proc_write = rtw_mcc_proc_write,
++static const struct file_operations rtw_mcc_proc_seq_proc_ops = {
++	.open = rtw_mcc_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = seq_release,
++	.write = rtw_mcc_proc_write,
+ };
+ 
+-static const struct proc_ops rtw_mcc_proc_sseq_proc_ops = {
+-	.proc_open = rtw_mcc_proc_open,
+-	.proc_read = seq_read,
+-	.proc_lseek = seq_lseek,
+-	.proc_release = single_release,
+-	.proc_write = rtw_mcc_proc_write,
++static const struct file_operations rtw_mcc_proc_sseq_proc_ops = {
++	.open = rtw_mcc_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++	.write = rtw_mcc_proc_write,
+ };
+ 
+ struct proc_dir_entry *rtw_mcc_proc_init(struct net_device *dev)

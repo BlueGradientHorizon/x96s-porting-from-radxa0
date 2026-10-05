@@ -1,0 +1,12 @@
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -422,6 +422,9 @@
+ module_param(rtw_beamform_cap, int, 0644);
+ #endif
+ module_param(rtw_lowrate_two_xmit, int, 0644);
++/* X96S: Broadcom-HAL compat knob (value ignored, firmware is built in). */
++static char *firmware_path = "";
++module_param(firmware_path, charp, 0644);
+ 
+ module_param(rtw_power_mgnt, int, 0644);
+ module_param(rtw_smart_ps, int, 0644);

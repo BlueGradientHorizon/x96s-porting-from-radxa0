@@ -180,8 +180,8 @@ jobs:
           git remote add origin "$WLAN_URL"
           git fetch --depth 1 origin "${{ inputs.wlan_sha }}"
           git checkout FETCH_HEAD
-          python3 ../x96s/apply_x96s.py "$PWD/rtl8723bs"
           cd rtl8723bs
+          python3 ../../x96s/apply_patches.py rtl8723bs
           make KSRC="$GITHUB_WORKSPACE/k" ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- CONFIG_POWER_SAVING=n \
@@ -274,8 +274,8 @@ jobs:
           CROSS_GCC_VER=$("$HOME/.local/bin/aarch64-none-elf-gcc" -dumpversion | cut -d. -f1)
           [ -f include/linux/compiler-gcc"$CROSS_GCC_VER".h ] \
             || cp include/linux/compiler-gcc4.h include/linux/compiler-gcc"$CROSS_GCC_VER".h
-          git apply --check "$GITHUB_WORKSPACE/x96s/patches/uboot-coldboot-window.patch"
-          git apply "$GITHUB_WORKSPACE/x96s/patches/uboot-coldboot-window.patch"
+          git apply --check "$GITHUB_WORKSPACE/x96s/patches-uboot/uboot-coldboot-window.patch"
+          git apply "$GITHUB_WORKSPACE/x96s/patches-uboot/uboot-coldboot-window.patch"
           git diff --stat
       - name: Build u-boot.bin
         timeout-minutes: 25

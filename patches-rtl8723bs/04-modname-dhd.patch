@@ -1,0 +1,12 @@
+--- a/Makefile
++++ b/Makefile
+@@ -1812,7 +1812,8 @@
+ $(MODULE_NAME)-$(CONFIG_MP_INCLUDED)+= core/rtw_bt_mp.o
+ endif
+ 
+-obj-$(CONFIG_RTL8723BS) := $(MODULE_NAME).o
++obj-$(CONFIG_RTL8723BS) := dhd.o
++dhd-y := $(8723bs-y)
+ 
+ else
+ 

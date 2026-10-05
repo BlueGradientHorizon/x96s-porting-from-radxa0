@@ -1,0 +1,40 @@
+--- a/os_dep/linux/sdio_intf.c
++++ b/os_dep/linux/sdio_intf.c
+@@ -31,10 +31,15 @@
+ #include <linux/acpi.h>
+ #include <linux/acpi_gpio.h>
+ #include "rtw_android.h"
++
+ #endif
+ static int wlan_en_gpio = -1;
+ #endif /* CONFIG_PLATFORM_INTEL_BYT */
+ 
++/* X96S: platform wifi power + MMC rescan (see module_init below). */
++extern int extern_wifi_set_enable(int is_on);
++extern void sdio_reinit(void);
++
+ #ifndef dev_to_sdio_func
+ #define dev_to_sdio_func(d)     container_of(d, struct sdio_func, dev)
+ #endif
+@@ -1090,6 +1095,13 @@
+ 
+ }
+ 
++static void x96s_power_and_rescan(void)
++{
++	extern_wifi_set_enable(0);
++	extern_wifi_set_enable(1);
++	sdio_reinit();
++}
++
+ static int rtw_drv_entry(void)
+ {
+ 	int ret = 0;
+@@ -1117,6 +1129,7 @@
+ 	rtw_ndev_notifier_register();
+ 	rtw_inetaddr_notifier_register();
+ 
++	x96s_power_and_rescan();
+ 	ret = sdio_register_driver(&sdio_drvpriv.r871xs_drv);
+ 	if (ret != 0) {
+ 		sdio_drvpriv.drv_registered = _FALSE;

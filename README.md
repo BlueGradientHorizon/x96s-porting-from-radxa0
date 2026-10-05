@@ -335,7 +335,10 @@ pinctrl-0 остался литералом). Поэтому в оверлее:
   в ПОА; ищется рядом с launch dir).
 - `8723bs-4.9.337.ko` — собранный драйвер WiFi (payload для скрипта,
   ищется рядом с launch dir; НЕ стрипать!).
-- `apply_x96s.py` — патчи исходников драйвера (раздел 8, repro).
+- `apply_patches.py` — один скрипт на все патчи исходников
+  (`apply_patches.py <target>` из корня чистых исходников;
+  патчи — файлами в `patches-rtl8723bs/` и `patches-uboot/`,
+  раздел 8, repro).
 - `dotconfig` — точный конфиг ядра с живого девайса (`/proc/config.gz`).
 - `remote.tab2` — исправленный таб нашего пульта (эталонная копия;
   в скрипт текст встроен).
@@ -451,8 +454,8 @@ vs магия `0x27B51956`), печатается в консоль. Бегут 
 
 Драйвер 8723bs v5.2.17.1 собран из исходников rockchip_wlan под
 4.9.337-aarch64 (vermagic совпал 1:1, стоковый .ko был 32-бит и не
-подошел). Правки исходников (`apply_x96s.py`, применяется один раз
-на чистое дерево):
+подошел). Правки исходников (`patches-rtl8723bs/`, применяются один раз
+на чистое дерево скриптом `apply_patches.py rtl8723bs`):
 - порт procfs (`proc_ops` -> `file_operations`, в 4.9 его нет);
 - питание и переенумерация: `extern_wifi_set_enable` + `sdio_reinit()`
   (DOWN-UP как в стоке, иначе карта молчит после power-cycle);
@@ -608,107 +611,27 @@ cd ~/k && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
   modules -j$(nproc)
 ```
 
-Патчи драйвера — готовые: скрипт `apply_x96s.py`
-(`python3 apply_x96s.py ~/8723bs`, сверен с боевым деревом —
-отличается только убранным дебагом). `CONFIG_PROC_DEBUG` в
-`include/autoconf.h` НЕ выключать (тест-хуки зовутся из боевого кода,
-без них не линкуется). Остальное — только через `apply_x96s.py`
-(единственное исключение: переименование цели в `dhd.o` правит
-сам `Makefile` — иначе имя модуля не сменить, см. § выше).
-Ниже то же самое в виде диффов.
+Патчи драйвера — готовые файлы в `patches-rtl8723bs/` (применяются
+одним вызовом `apply_patches.py rtl8723bs` из корня исходников
+`rtl8723bs`; `CONFIG_PROC_DEBUG` в `include/autoconf.h` НЕ выключать —
+тест-хуки зовутся из боевого кода, без них не линкуется):
 
-Патч 1 — порт procfs (`struct proc_ops` есть только с ядра 5.6),
-одной строкой:
-```bash
-cd ~/8723bs && sed -i 's/struct proc_ops/struct file_operations/g; s/\.proc_open/.open/g; s/\.proc_read/.read/g; s/\.proc_lseek/.llseek/g; s/\.proc_release/.release/g; s/\.proc_write/.write/g' os_dep/linux/rtw_proc.c
-```
-(меняет 1 сигнатуру + 7 структур `rtw_*_proc_ops`, имена вида
-`rtw_drv_proc_seq_proc_ops` остаются).
+- `01-procfs-file-operations.patch` — порт procfs (`struct proc_ops`
+  есть только с ядра 5.6): 1 сигнатура + 7 структур `rtw_*_proc_ops`
+  (имена вида `rtw_drv_proc_seq_proc_ops` остаются);
+- `02-sdio-power-rescan.patch` — питание и переенумерация:
+  `extern_wifi_set_enable` + `sdio_reinit()` (DOWN-UP как в стоке,
+  синхронный reinit без единого слипа — эксперименты А/Б 2026-10-04
+  убрали 1.5-с settle и все паузы);
+- `03-firmware-path-knob.patch` — шим под Broadcom-HAL:
+  dummy-параметр `firmware_path` (charp 0644);
+- `04-modname-dhd.patch` — переименование цели в `dhd.o`
+  (`dhd-y := $(8723bs-y)`, иначе имя модуля не сменить).
 
-Патч 2 — питание и переенумерация (`os_dep/linux/sdio_intf.c`):
-```diff
---- a/os_dep/linux/sdio_intf.c
-+++ b/os_dep/linux/sdio_intf.c
-@@ -31,10 +31,22 @@
- #include <linux/acpi.h>
- #include <linux/acpi_gpio.h>
- #include "rtw_android.h"
-+
- #endif
- static int wlan_en_gpio = -1;
- #endif /* CONFIG_PLATFORM_INTEL_BYT */
- 
-+#include <linux/of.h>
-+#include <linux/of_device.h>
-+#include <linux/mmc/host.h>
-+#include <linux/string.h>
-+
-+/* X96S: platform wifi power + MMC rescan (see probe below). */
-+extern int extern_wifi_set_enable(int is_on);
-+struct mmc_host;
-+extern void mmc_detect_change(struct mmc_host *host, unsigned long delay);
-+extern void sdio_reinit(void);
-+
- #ifndef dev_to_sdio_func
- #define dev_to_sdio_func(d)     container_of(d, struct sdio_func, dev)
- #endif
-@@ -828,6 +840,19 @@
- 
- 
- 
-+
-+	/* X96S (amlogic g12a): keep the on-board RTL8723BS powered;
-+	 * the card was revived by sdio_reinit() in module_init. */
-+	{
-+		extern_wifi_set_enable(1);
-+		if (func->card && func->card->host) {
-+			unsigned long deadline;
-+			mmc_detect_change(func->card->host, 0);
-+			deadline = jiffies + msecs_to_jiffies(1500);
-+			while (time_before(jiffies, deadline))
-+				msleep(100);
-+		}
-+	}
- 	dvobj = sdio_dvobj_init(func, id);
- 	if (dvobj == NULL) {
- 		goto exit;
-@@ -1090,11 +1115,19 @@
- 
- }
- 
-+static void x96s_power_and_rescan(void)
-+{
-+	extern_wifi_set_enable(1);
-+	msleep(300);
-+	sdio_reinit();
-+	msleep(500);
-+}
-+
- static int rtw_drv_entry(void)
- {
- 	int ret = 0;
- 
- 	RTW_PRINT("module init start\n");
- 	dump_drv_version(RTW_DBGDUMP);
- #ifdef BTCOEXVERSION
- 	RTW_PRINT(DRV_NAME" BT-Coex version = %s\n", BTCOEXVERSION);
-@@ -1117,6 +1158,7 @@
- 	rtw_ndev_notifier_register();
- 	rtw_inetaddr_notifier_register();
- 
-+	x96s_power_and_rescan();
- 	ret = sdio_register_driver(&sdio_drvpriv.r871xs_drv);
- 	if (ret != 0) {
- 		sdio_drvpriv.drv_registered = _FALSE;
-```
 Зачем каждая часть: `extern_wifi_set_enable` — включает питание чипа
 через штатный aml_wifi-драйвер (иначе тишина); `sdio_reinit()` —
 amlogic-ресет SDIO именно для Realtek 024C (оживляет карту после
-power-cycle, который устраивает dhd при загрузке); паузы дают
-переенумерации завершиться.
-Патч 3 — шим под Broadcom-HAL (`os_dep/linux/os_intfs.c` +
-`Makefile`): dummy-параметр `firmware_path` (charp 0644) и
-переименование цели в `dhd.o` (`dhd-y := $(8723bs-y)`).
+power-cycle, который устраивает dhd при загрузке).
 
 Сборка драйвера (2-5 мин; power-save выключен — см. ниже зачем):
 ```bash
@@ -731,7 +654,7 @@ cd ~/8723bs && make KSRC=~/k ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
   последовательность (DOWN-UP + позднее включение) = чистый
   линк; наши ранние включения без DOWN давали маргинальное
   состояние чипа (пачки `-84`, разрывы). Поэтому наш драйвер
-  теперь тоже делает DOWN-UP (см. патч 2 в apply_x96s.py),
+  теперь тоже делает DOWN-UP (см. `02-sdio-power-rescan.patch`),
   а power-save всё равно выключен (страховка, стику не нужен).
 
 Про power-save отдельно: дефолты драйвера — `rtw_power_mgnt=2`
@@ -913,7 +836,7 @@ cd ../u-boot_build
   вспышка ~750мс → загрузка дальше.
 - CI (`.github/workflows/`, раннер `ubuntu-26.04`): `build.yml` —
   весь пайплайн (оригиналы по API Lineage + ядро с коммита из
-  манифеста + драйвер + u-boot с `patches/` + `fix_x96s.py`,
+  манифеста + драйвер + u-boot с `patches-uboot/` + `fix_x96s.py`,
   джобы `resolve`/`kernel-driver`/`uboot`/`build-device`),
   `ci.yml` — ручной запуск, `release.yml` — ручной релиз.
   Тулчейн — версионный `gcc-15` (безверсионный кросс в 26.04 —
@@ -1076,7 +999,7 @@ FIP `fip-radxa-zero`): в `g12a_radxa0_v1.h` строки 165-167 cold_boot
 БЕЗ вызова, `CONFIG_AML_V2_FACTORY_BURN=1` (команда есть).
 СОБРАН (2026-10-05, дерево в домашке VM — `/var/tmp` ребуты не
 переживает, теперь `~/u-boot`, коммит `fd4a7d4` + C-хук 4 строки,
-патч — в `patches/uboot-coldboot-window.patch`); `u-boot.bin` 1100160
+патч — в `patches-uboot/uboot-coldboot-window.patch`); `u-boot.bin` 1100160
 байт собран system-тулчейном
 через симлинки/wrapper'ы (`aarch64-none-elf-*` → `aarch64-linux-gnu-*`,
 `arm-none-eabi-*` → `arm-linux-gnueabihf-*`, шим `compiler-gcc15.h`,
