@@ -102,25 +102,25 @@ jobs:
           # the unversioned cross-gcc/ld on Ubuntu 26.04 are broken
           # stubs - shadow them in PATH with verified real tools.
           sudo apt-get install -y build-essential git bc bison flex \
-            libssl-dev libelf-dev gcc-14-aarch64-linux-gnu \
+            libssl-dev libelf-dev gcc-15-aarch64-linux-gnu \
             gcc-arm-linux-gnueabihf
-          GCC14=/usr/bin/aarch64-linux-gnu-gcc-14
-          timeout -k 5 30 "$GCC14" -dumpversion
-          [ "$(stat -c%s "$GCC14")" -gt 100000 ] \
-            || { echo "FATAL: $GCC14 is a stub"; exit 1; }
+          GCC15=/usr/bin/aarch64-linux-gnu-gcc-15
+          timeout -k 5 30 "$GCC15" -dumpversion
+          [ "$(stat -c%s "$GCC15")" -gt 100000 ] \
+            || { echo "FATAL: $GCC15 is a stub"; exit 1; }
           LD_REAL=""
           for c in /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld /usr/bin/aarch64-linux-gnu-ld.gold; do
             if [ "$(stat -c%s "$c" 2>/dev/null || echo 0)" -gt 100000 ] \
               && timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
           done
           [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
-          echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
+          echo "REAL_GCC=$GCC15 REAL_LD=$LD_REAL"
           echo 'int main(void){return 0;}' > /tmp/tc.c
-          timeout -k 5 60 "$GCC14" -c /tmp/tc.c -o /tmp/tc.o
+          timeout -k 5 60 "$GCC15" -c /tmp/tc.c -o /tmp/tc.o
           timeout -k 5 60 "$LD_REAL" -o /tmp/tc.elf /tmp/tc.o
           echo "TOOLCHAIN_SMOKE_OK"
           mkdir -p "$HOME/.local/bin"
-          ln -sf "$GCC14" "$HOME/.local/bin/aarch64-linux-gnu-gcc"
+          ln -sf "$GCC15" "$HOME/.local/bin/aarch64-linux-gnu-gcc"
           ln -sf "$LD_REAL" "$HOME/.local/bin/aarch64-linux-gnu-ld"
           for t in objcopy objdump ar nm strip readelf cpp; do
             ln -sf /usr/bin/aarch64-linux-gnu-$t "$HOME/.local/bin/aarch64-linux-gnu-$t"
@@ -185,7 +185,7 @@ jobs:
           make KSRC="$GITHUB_WORKSPACE/k" ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- CONFIG_POWER_SAVING=n \
-            USER_EXTRA_CFLAGS="-Wno-error -Wno-error=address -Wno-error=format -Wno-error=stringop-overflow -Wno-error=stringop-truncation -Wno-error=implicit-fallthrough -Wno-error=unused-but-set-variable -Wno-error=misleading-indentation -Wno-error=comment -Wno-error=return-mismatch"
+            USER_EXTRA_CFLAGS="-Wno-error -Wno-error=header-guard -Wno-error=address -Wno-error=format -Wno-error=stringop-overflow -Wno-error=stringop-truncation -Wno-error=implicit-fallthrough -Wno-error=unused-but-set-variable -Wno-error=misleading-indentation -Wno-error=comment -Wno-error=return-mismatch"
           ls -l dhd.ko
       - name: Verify payload (vermagic + modname, never stripped)
         run: |
@@ -198,6 +198,10 @@ jobs:
           path: 8723bs-4.9.337.ko
           archive: false
           if-no-files-found: error
+      - name: Debug over SSH on failure
+        if: failure()
+        timeout-minutes: 30
+        uses: mxschmitt/action-tmate@v3
 
   # Rebuilt u-boot (FIP) with the env-independent cold-boot window.
   uboot:
@@ -213,29 +217,29 @@ jobs:
           sudo apt-get update
           # NOTE: Ubuntu 26.04's unversioned aarch64 cross-gcc/ld are
           # broken 80-byte stubs that hang forever (dash ENOEXEC
-          # fallback). Use the versioned gcc-14 + a probed real ld.
+          # fallback). Use the versioned gcc-15 + a probed real ld.
           sudo apt-get install -y build-essential git bc bison flex \
-            libssl-dev gcc-14-aarch64-linux-gnu gcc-arm-linux-gnueabihf
-          GCC14=/usr/bin/aarch64-linux-gnu-gcc-14
-          timeout -k 5 30 "$GCC14" -dumpversion
-          [ "$(stat -c%s "$GCC14")" -gt 100000 ] \
-            || { echo "FATAL: $GCC14 is a stub"; exit 1; }
+            libssl-dev gcc-15-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+          GCC15=/usr/bin/aarch64-linux-gnu-gcc-15
+          timeout -k 5 30 "$GCC15" -dumpversion
+          [ "$(stat -c%s "$GCC15")" -gt 100000 ] \
+            || { echo "FATAL: $GCC15 is a stub"; exit 1; }
           LD_REAL=""
           for c in /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld /usr/bin/aarch64-linux-gnu-ld.gold; do
             if [ "$(stat -c%s "$c" 2>/dev/null || echo 0)" -gt 100000 ] \
               && timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
           done
           [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
-          echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
+          echo "REAL_GCC=$GCC15 REAL_LD=$LD_REAL"
           echo 'int main(void){return 0;}' > /tmp/tc.c
-          timeout -k 5 60 "$GCC14" -c /tmp/tc.c -o /tmp/tc.o
+          timeout -k 5 60 "$GCC15" -c /tmp/tc.c -o /tmp/tc.o
           timeout -k 5 60 "$LD_REAL" -o /tmp/tc.elf /tmp/tc.o
           echo "TOOLCHAIN_SMOKE_OK"
           if "$LD_REAL" --help 2>/dev/null | grep -q no-warn-rwx-segments; then LX=" --no-warn-rwx-segments"; else LX=""; fi
           mkdir -p "$HOME/.local/bin"
           printf '%s\n' '#!/bin/bash' \
-            "[ -x '$GCC14' ] || { echo 'FATAL: $GCC14 gone' >&2; exit 127; }" \
-            "exec '$GCC14' \"\$@\" -Wno-error -Wno-int-conversion" \
+            "[ -x '$GCC15' ] || { echo 'FATAL: $GCC15 gone' >&2; exit 127; }" \
+            "exec '$GCC15' \"\$@\" -Wno-error -Wno-int-conversion" \
             >"$HOME/.local/bin/aarch64-none-elf-gcc"
           printf '%s\n' '#!/bin/bash' \
             "[ -x '$LD_REAL' ] || { echo 'FATAL: $LD_REAL gone' >&2; exit 127; }" \
@@ -294,6 +298,10 @@ jobs:
           path: bootloader-x96s.bin
           archive: false
           if-no-files-found: error
+      - name: Debug over SSH on failure
+        if: failure()
+        timeout-minutes: 30
+        uses: mxschmitt/action-tmate@v3
 
   # Per-device: download originals, patch with the freshly built
   # payloads, upload each file as its own artifact under its original
@@ -369,3 +377,7 @@ jobs:
           path: x96s/out/${{ steps.names.outputs.aip }}
           archive: false
           if-no-files-found: error
+      - name: Debug over SSH on failure
+        if: failure()
+        timeout-minutes: 30
+        uses: mxschmitt/action-tmate@v3
