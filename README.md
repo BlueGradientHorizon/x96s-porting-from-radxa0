@@ -911,6 +911,15 @@ cd ../u-boot_build
   с `env_template.bin`. Живое доказательство ещё впереди: прошить
   fixed-ПОА поверх env без вызова → холодный бут с USB в ноут →
   вспышка ~750мс → загрузка дальше.
+- CI (`.github/workflows/`, раннер `ubuntu-26.04`): `build.yml` —
+  весь пайплайн (оригиналы по API Lineage + ядро с коммита из
+  манифеста + драйвер + u-boot с `patches/` + `fix_x96s.py`,
+  джобы `resolve`/`kernel-driver`/`uboot`/`build-device`),
+  `ci.yml` — ручной запуск, `release.yml` — ручной релиз.
+  Тулчейн — версионный `gcc-15` (безверсионный кросс в 26.04 —
+  битые 80-байтные стабы, виснут навсегда), шим `compiler-gccN.h`
+  строго по версии кросса, tmate-дебарг на падениях. Зелёный
+  прогон есть: 6 артефактов пофайлово (2 зипа + 2 img + ko + bin).
 
 - Прошито и работает: TV `lineage-22.2-20260925-nightly-radxa0-signed-x96s-fix.zip`
   (dtbo + tab2 + wifi: `dhd.ko` с 8723bs внутри, ранний `on boot` insmod
