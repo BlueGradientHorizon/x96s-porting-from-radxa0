@@ -310,9 +310,9 @@ jobs:
       - name: Apply the cold-boot window patch
         run: |
           cd ub/u-boot
-          GCC_VER=$(gcc -dumpversion | cut -d. -f1)
-          [ -f include/linux/compiler-gcc"$GCC_VER".h ] \
-            || cp include/linux/compiler-gcc4.h include/linux/compiler-gcc"$GCC_VER".h
+          CROSS_GCC_VER=$("$HOME/.local/bin/aarch64-none-elf-gcc" -dumpversion | cut -d. -f1)
+          [ -f include/linux/compiler-gcc"$CROSS_GCC_VER".h ] \
+            || cp include/linux/compiler-gcc4.h include/linux/compiler-gcc"$CROSS_GCC_VER".h
           git apply --check "$GITHUB_WORKSPACE/x96s/patches/uboot-coldboot-window.patch"
           git apply "$GITHUB_WORKSPACE/x96s/patches/uboot-coldboot-window.patch"
           git diff --stat
