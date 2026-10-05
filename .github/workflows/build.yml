@@ -79,47 +79,9 @@ jobs:
           EOF
           cat dates.env >>"$GITHUB_OUTPUT"
 
-  # Originals: recovery OTA zip + Amlogic burn package per device,
-  # sha256-verified against the official API. Runs in parallel
-  # with both source builds.
-  fetch:
-    needs: resolve
-    runs-on: ubuntu-26.04
-    strategy:
-      matrix:
-        device: [radxa0, radxa0_tab]
-    steps:
-      - name: Download originals
-        run: |
-          DEV=${{ matrix.device }}
-          DATE=${{ needs.resolve.outputs[format('date_{0}', matrix.device)] }}
-          mkdir -p orig && cd orig
-          python3 - "$DEV" "$DATE" >files.txt <<'EOF'
-          import json, sys, urllib.request
-          dev, date = sys.argv[1], sys.argv[2]
-          with urllib.request.urlopen(
-                  f"https://download.lineageos.org/api/v2/devices/{dev}/builds",
-                  timeout=60) as r:
-              builds = json.load(r)
-          build = next(b for b in builds if b["date"] == date)
-          for f in build["files"]:
-              if f["filename"].endswith(".zip") or f["filename"] in (
-                      "aml_install_package.img", "build-manifest.xml"):
-                  print(f["url"], f["sha256"], f["filename"])
-          EOF
-          cat files.txt
-          while read -r url sha name; do
-            curl -fL --retry 3 -o "$name" "$url"
-            echo "$sha  $name" | sha256sum -c -
-          done <files.txt
-          rm files.txt
-          ls -l
-      - uses: actions/upload-artifact@v4
-        with:
-          name: orig-${{ matrix.device }}
-          path: orig/
-          if-no-files-found: error
-
+  # NOTE: originals (recovery OTA zip + Amlogic burn package) are
+  # downloaded inside the device job itself, sha256-verified against
+  # the official API, and never uploaded as artifacts.
   # Kernel + wifi driver: the long pole (full `make modules` generates
   # Module.symvers with CRCs the driver must match). The kernel commit
   # is the EXACT one the nightly was built from (build-manifest.xml),
@@ -129,7 +91,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: x96s
       - name: Install toolchain
@@ -231,15 +193,10 @@ jobs:
           modinfo -F vermagic dhd.ko | tee vermagic.txt
           grep -q "SMP preempt mod_unload modversions aarch64" vermagic.txt
           cp dhd.ko "$GITHUB_WORKSPACE/8723bs-4.9.337.ko"
-          { echo "kernel: $(cat $GITHUB_WORKSPACE/kernel-sha.txt)";
-            echo "wlan: ${{ inputs.wlan_sha }}";
-            echo -n "vermagic: "; cat vermagic.txt; } >"$GITHUB_WORKSPACE/build-info-wifi.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: payload-wifi
-          path: |
-            8723bs-4.9.337.ko
-            build-info-wifi.txt
+          path: 8723bs-4.9.337.ko
+          archive: false
           if-no-files-found: error
 
   # Rebuilt u-boot (FIP) with the env-independent cold-boot window.
@@ -247,7 +204,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: x96s
       - name: Install toolchain
@@ -332,56 +289,83 @@ jobs:
           NEWDIR=$(ls -dt uboot-bins-g12a_radxa0_v1-base-* | head -n 1)
           cp "$NEWDIR/u-boot.bin" "$GITHUB_WORKSPACE/bootloader-x96s.bin"
           ls -l "$GITHUB_WORKSPACE/bootloader-x96s.bin"
-          { echo "uboot: ${{ inputs.uboot_sha }}";
-            echo "uboot_build: ${{ inputs.uboot_build_sha }}"; } >"$GITHUB_WORKSPACE/build-info-uboot.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: payload-bootloader
-          path: |
-            bootloader-x96s.bin
-            build-info-uboot.txt
+          path: bootloader-x96s.bin
+          archive: false
           if-no-files-found: error
 
-  # Patch both original packages per device with the freshly built
-  # payloads. Matrix legs run in parallel once all three producers
-  # are done.
-  patch:
-    needs: [resolve, fetch, kernel-driver, uboot]
+  # Per-device: download originals, patch with the freshly built
+  # payloads, upload each file as its own artifact under its original
+  # name (no repacking). Matrix legs run in parallel once resolve +
+  # both payloads are done.
+  build-device:
+    needs: [resolve, kernel-driver, uboot]
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       matrix:
         device: [radxa0, radxa0_tab]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: x96s
-      - uses: actions/download-artifact@v4
+      - name: Download originals
+        run: |
+          DEV=${{ matrix.device }}
+          DATE=${{ needs.resolve.outputs[format('date_{0}', matrix.device)] }}
+          mkdir -p orig && cd orig
+          python3 - "$DEV" "$DATE" >files.txt <<'EOF'
+          import json, sys, urllib.request
+          dev, date = sys.argv[1], sys.argv[2]
+          with urllib.request.urlopen(
+                  f"https://download.lineageos.org/api/v2/devices/{dev}/builds",
+                  timeout=60) as r:
+              builds = json.load(r)
+          build = next(b for b in builds if b["date"] == date)
+          for f in build["files"]:
+              if f["filename"].endswith(".zip") or f["filename"] == "aml_install_package.img":
+                  print(f["url"], f["sha256"], f["filename"])
+          EOF
+          cat files.txt
+          while read -r url sha name; do
+            curl -fL --retry 3 -o "$name" "$url"
+            echo "$sha  $name" | sha256sum -c -
+          done <files.txt
+          rm files.txt
+          ls -l
+      - uses: actions/download-artifact@v8
         with:
-          name: orig-${{ matrix.device }}
-          path: work/orig
-      - uses: actions/download-artifact@v4
+          name: 8723bs-4.9.337.ko
+          path: dl
+      - uses: actions/download-artifact@v8
         with:
-          name: payload-wifi
-          path: work/dl
-      - uses: actions/download-artifact@v4
-        with:
-          name: payload-bootloader
-          path: work/dl
+          name: bootloader-x96s.bin
+          path: dl
       - name: Install patcher deps
         run: sudo apt-get update && sudo apt-get install -y e2fsprogs python3-brotli
       - name: Patch OTA + burn package
         run: |
           cd x96s
-          cp ../work/dl/8723bs-4.9.337.ko 8723bs-4.9.337.ko
-          cp ../work/dl/bootloader-x96s.bin bootloader-x96s.bin
-          ZIP=$(ls ../work/orig/lineage-*.zip)
-          IMG=$(ls ../work/orig/aml_install_package.img)
+          cp ../dl/8723bs-4.9.337.ko 8723bs-4.9.337.ko
+          cp ../dl/bootloader-x96s.bin bootloader-x96s.bin
+          ZIP=$(ls ../orig/lineage-*.zip)
+          IMG=$(ls ../orig/aml_install_package.img)
           python3 fix_x96s.py "$ZIP"
           python3 fix_x96s.py "$IMG"
           ls -l out/
-      - uses: actions/upload-artifact@v4
+      - id: names
+        run: |
+          cd x96s/out
+          echo "ota=$(ls lineage-*.zip)" >>"$GITHUB_OUTPUT"
+          echo "aip=$(ls aml_install_package-*.img)" >>"$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
         with:
-          name: fixed-${{ matrix.device }}
-          path: x96s/out/
+          path: x96s/out/${{ steps.names.outputs.ota }}
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          path: x96s/out/${{ steps.names.outputs.aip }}
+          archive: false
           if-no-files-found: error
