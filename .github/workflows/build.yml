@@ -267,12 +267,23 @@ jobs:
           git apply "$GITHUB_WORKSPACE/x96s/patches/uboot-coldboot-window.patch"
           git diff --stat
       - name: Build u-boot.bin
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
           cd ub/u-boot
+          echo "nproc: $(nproc)"; df -h . | tail -n 1
           make g12a_radxa0_v1_defconfig
           PATH="/usr/local/bin:$PATH" CROSS_COMPILE=aarch64-none-elf- \
-            make u-boot.bin -j"$(nproc)"
+            make u-boot.bin -j"$(nproc)" >/tmp/uboot-make.log 2>&1 &
+          MPID=$!
+          while kill -0 "$MPID" 2>/dev/null; do
+            sleep 60
+            echo "--- alive $(date -u +%H:%M:%S), log lines: $(wc -l </tmp/uboot-make.log)"
+            tail -n 5 /tmp/uboot-make.log
+            ps -o pid,etime,cmd -p "$MPID"
+          done
+          wait "$MPID"
+          echo "--- make done, tail:"
+          tail -n 20 /tmp/uboot-make.log
           test "$(strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750' || true)" = 1
           test "$(strings build/u-boot.bin | grep -c 'run try_auto_burn' || true)" = 0
       - name: Pack FIP
