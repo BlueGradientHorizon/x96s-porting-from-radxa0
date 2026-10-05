@@ -243,6 +243,18 @@ jobs:
             'exec /usr/bin/aarch64-linux-gnu-ld.bfd "$@" --no-warn-rwx-segments' \
             | sudo tee /usr/local/bin/aarch64-none-elf-ld >/dev/null
           sudo chmod +x /usr/local/bin/aarch64-none-elf-ld
+      - name: Diagnose cross compilers
+        timeout-minutes: 5
+        run: |
+          ls -l /usr/bin/aarch64-linux-gnu-* /usr/bin/arm-linux-gnueabihf-* || true
+          file /usr/bin/aarch64-linux-gnu-gcc || true
+          readlink -f /usr/bin/aarch64-linux-gnu-gcc || true
+          for c in /usr/bin/aarch64-linux-gnu-gcc-15 /usr/bin/aarch64-linux-gnu-gcc-14 /usr/bin/aarch64-linux-gnu-gcc; do
+            echo "== $c"
+            timeout 30 "$c" -dumpversion; echo "rc=$?"
+          done
+          echo "== wrapper probe:"
+          timeout 30 aarch64-none-elf-gcc -dumpversion; echo "rc=$?"
       - name: Clone sources at pinned commits
         run: |
           mkdir -p ub && cd ub
