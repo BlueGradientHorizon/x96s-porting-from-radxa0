@@ -153,6 +153,10 @@ jobs:
           done
           [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
           echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
+          echo 'int main(void){return 0;}' > /tmp/tc.c
+          timeout -k 5 60 "$GCC14" -c /tmp/tc.c -o /tmp/tc.o
+          timeout -k 5 60 "$LD_REAL" -o /tmp/tc.elf /tmp/tc.o
+          echo "TOOLCHAIN_SMOKE_OK"
           mkdir -p "$HOME/.local/bin"
           ln -sf "$GCC14" "$HOME/.local/bin/aarch64-linux-gnu-gcc"
           ln -sf "$LD_REAL" "$HOME/.local/bin/aarch64-linux-gnu-ld"
@@ -266,6 +270,10 @@ jobs:
           done
           [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
           echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
+          echo 'int main(void){return 0;}' > /tmp/tc.c
+          timeout -k 5 60 "$GCC14" -c /tmp/tc.c -o /tmp/tc.o
+          timeout -k 5 60 "$LD_REAL" -o /tmp/tc.elf /tmp/tc.o
+          echo "TOOLCHAIN_SMOKE_OK"
           if "$LD_REAL" --help 2>/dev/null | grep -q no-warn-rwx-segments; then LX=" --no-warn-rwx-segments"; else LX=""; fi
           mkdir -p "$HOME/.local/bin"
           printf '%s\n' '#!/bin/bash' \
@@ -323,11 +331,10 @@ jobs:
             tail -n 5 /tmp/uboot-make.log
           done
           wait "$MPID"; RC=$?
-          echo "--- make rc=$RC, tail:"
-          tail -n 20 /tmp/uboot-make.log
+          echo "--- make rc=$RC, lines: $(wc -l </tmp/uboot-make.log)"
           if [ "$RC" -ne 0 ]; then
-            echo "--- error context:"
-            grep -B45 -m1 'Error [0-9]' /tmp/uboot-make.log | tail -n 50
+            echo "--- FULL LOG:"
+            head -n 300 /tmp/uboot-make.log
             exit "$RC"
           fi
           test "$(strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750' || true)" = 1
