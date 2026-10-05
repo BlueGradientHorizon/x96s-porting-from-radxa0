@@ -143,9 +143,12 @@ jobs:
             gcc-arm-linux-gnueabihf
           GCC14=/usr/bin/aarch64-linux-gnu-gcc-14
           timeout -k 5 30 "$GCC14" -dumpversion
+          [ "$(stat -c%s "$GCC14")" -gt 100000 ] \
+            || { echo "FATAL: $GCC14 is a stub"; exit 1; }
           LD_REAL=""
-          for c in /usr/bin/aarch64-linux-gnu-ld.gold /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld; do
-            if timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
+          for c in /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld /usr/bin/aarch64-linux-gnu-ld.gold; do
+            if [ "$(stat -c%s "$c" 2>/dev/null || echo 0)" -gt 100000 ] \
+              && timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
           done
           [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
           echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
@@ -257,9 +260,12 @@ jobs:
             libssl-dev gcc-14-aarch64-linux-gnu gcc-arm-linux-gnueabihf
           GCC14=/usr/bin/aarch64-linux-gnu-gcc-14
           timeout -k 5 30 "$GCC14" -dumpversion
+          [ "$(stat -c%s "$GCC14")" -gt 100000 ] \
+            || { echo "FATAL: $GCC14 is a stub"; exit 1; }
           LD_REAL=""
-          for c in /usr/bin/aarch64-linux-gnu-ld.gold /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld; do
-            if timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
+          for c in /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld /usr/bin/aarch64-linux-gnu-ld.gold; do
+            if [ "$(stat -c%s "$c" 2>/dev/null || echo 0)" -gt 100000 ] \
+              && timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
           done
           [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
           echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
@@ -319,9 +325,14 @@ jobs:
             echo "--- alive $(date -u +%H:%M:%S), log lines: $(wc -l </tmp/uboot-make.log)"
             tail -n 5 /tmp/uboot-make.log
           done
-          wait "$MPID"
-          echo "--- make done, tail:"
+          wait "$MPID"; RC=$?
+          echo "--- make rc=$RC, tail:"
           tail -n 20 /tmp/uboot-make.log
+          if [ "$RC" -ne 0 ]; then
+            echo "--- error context:"
+            grep -B45 -m1 'Error [0-9]' /tmp/uboot-make.log | tail -n 50
+            exit "$RC"
+          fi
           test "$(strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750' || true)" = 1
           test "$(strings build/u-boot.bin | grep -c 'run try_auto_burn' || true)" = 0
       - name: Pack FIP
