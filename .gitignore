@@ -1,0 +1,15 @@
+# Build outputs (regenerate with fix_x96s.py)
+out/
+# Local full-size firmware dumps (redistributable Lineage builds and
+# stock images live here; too big and partly copyrighted for GitHub)
+flash/*.img
+flash/*.zip
+__pycache__/
+flash/
+# One-off analysis leftovers (never commit test binaries/dumps)
+*.tmp
+*.ko
+*.bin
+*-pass*.txt
+dmesg-*.txt
+logcat-*.txt

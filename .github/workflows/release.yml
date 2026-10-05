@@ -1,0 +1,46 @@
+# X96S release: manual full-pipeline run from the Actions tab,
+# then a GitHub release with every artifact attached.
+
+on:
+  workflow_dispatch:
+    inputs:
+      los_date:
+        description: "LineageOS nightly date (YYYYMMDD) or 'latest'"
+        required: false
+        default: "latest"
+      tag:
+        description: "Release tag (e.g. v2026.10-los20260925)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      los_date: ${{ inputs.los_date }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{fixed-,payload-}*"
+          merge-multiple: true
+          path: dist
+      - name: Create release
+        run: |
+          ls -l dist/
+          NOTES=$(mktemp)
+          { echo "X96S fixed firmware (LineageOS nightly ${{ inputs.los_date }}).";
+            echo "";
+            echo "Flash: burn the fixed aml_install_package via USB Burning Tool,";
+            echo "boot to recovery, sideload the fixed OTA zip.";
+            echo "";
+            cat dist/build-info-*.txt; } >"$NOTES"
+          gh release create "${{ inputs.tag }}" --title "${{ inputs.tag }}" \
+            --notes-file "$NOTES" dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}

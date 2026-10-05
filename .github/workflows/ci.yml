@@ -1,0 +1,19 @@
+# X96S CI build: manual full-pipeline run from the Actions tab.
+# No push/PR triggers by design (heavy: full kernel modules build).
+
+on:
+  workflow_dispatch:
+    inputs:
+      los_date:
+        description: "LineageOS nightly date (YYYYMMDD) or 'latest'"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      los_date: ${{ inputs.los_date }}

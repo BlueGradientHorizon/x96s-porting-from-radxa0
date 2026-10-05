@@ -1,0 +1,15 @@
+diff --git a/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c b/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c
+index f19adef67e..890a9a1d04 100644
+--- a/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c
++++ b/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c
+@@ -605,6 +605,10 @@ int board_late_init(void)
+ 						"defenv_reserv;save; fi;", 0);
+ 		run_command("if itest ${upgrade_step} == 1; then "\
+ 						"defenv_reserv; setenv upgrade_step 2; saveenv; fi;", 0);
++		/* X96S: stock cold-boot WorldCup flash, env-independent.
++		 * switch_bootmode text comes from SAVED env and may lack the call,
++		 * so do the window here directly: same 700/750 as stock. */
++		run_command("if test ${reboot_mode} = cold_boot; then update 700 750; fi;", 0);
+ 		/*add board late init function here*/
+ #ifndef DTB_BIND_KERNEL
+ 		int ret;

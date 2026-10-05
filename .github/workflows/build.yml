@@ -1,0 +1,334 @@
+# X96S full pipeline (logic only): fetch original LineageOS images,
+# build the wifi driver + u-boot from source, patch everything with
+# fix_x96s.py, upload all artifacts.
+#
+# Reusable workflow: called by ci.yml (manual CI build) and
+# release.yml (GitHub release). Never triggered directly.
+#
+# NOTE: ubuntu-26.04 runner image (GA since 2026-09-17).
+
+on:
+  workflow_call:
+    inputs:
+      los_date:
+        description: "LineageOS nightly date (YYYYMMDD) or 'latest'"
+        required: false
+        default: "latest"
+        type: string
+      kernel_sha:
+        description: "Kernel commit (default: exact SHA from the nightly's build-manifest.xml)"
+        required: false
+        default: ""
+        type: string
+      uboot_sha:
+        description: "u-boot commit under test"
+        required: false
+        default: "fd4a7d45096f5f66f9afba13dacfa29c271aaf47"
+        type: string
+      uboot_build_sha:
+        description: "u-boot_build (FIP packer + blobs) commit"
+        required: false
+        default: "c56240e3717bfe90d0793cbbad1a7ce66f5173a4"
+        type: string
+      wlan_sha:
+        description: "rockchip_wlan (RTL8723BS source) commit"
+        required: false
+        default: "f38306cfc7e5b57112616dd5073cd6dfd533168f"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  KERNEL_URL: https://github.com/LineageOS/android_kernel_amlogic_linux-4.9
+  KERNEL_BRANCH: lineage-22.2
+  WLAN_URL: https://github.com/youling257/rockchip_wlan
+  UBOOT_URL: https://github.com/LineageOS/android_hardware_amlogic_u-boot
+  UBOOT_BUILD_URL: https://github.com/LineageOS/android_hardware_amlogic_u-boot_build
+
+jobs:
+  # Resolve the nightly date per device once, so every job below
+  # downloads the exact same build (a new nightly mid-run must not
+  # split the pipeline across two dates).
+  resolve:
+    runs-on: ubuntu-26.04
+    outputs:
+      date_radxa0: ${{ steps.d.outputs.date_radxa0 }}
+      date_radxa0_tab: ${{ steps.d.outputs.date_radxa0_tab }}
+    steps:
+      - id: d
+        run: |
+          python3 - "${{ inputs.los_date }}" >>"$GITHUB_OUTPUT" <<'EOF'
+          import json, sys, urllib.request
+          want = sys.argv[1]
+          out = []
+          for dev in ("radxa0", "radxa0_tab"):
+              with urllib.request.urlopen(
+                      f"https://download.lineageos.org/api/v2/devices/{dev}/builds",
+                      timeout=60) as r:
+                  builds = json.load(r)
+              dates = [b["date"] for b in builds]
+              date = dates[0] if want == "latest" else want
+              if date not in dates:
+                  sys.exit(f"no {dev} build for date {date} "
+                           f"(available: {', '.join(dates[:4])}...)")
+              out.append(f"date_{dev}={date}")
+              print(dev, "->", date, file=sys.stderr)
+          with open("dates.env", "w") as f:
+              f.write("\n".join(out) + "\n")
+          EOF
+          cat dates.env >>"$GITHUB_OUTPUT"
+
+  # Originals: recovery OTA zip + Amlogic burn package per device,
+  # sha256-verified against the official API. Runs in parallel
+  # with both source builds.
+  fetch:
+    needs: resolve
+    runs-on: ubuntu-26.04
+    strategy:
+      matrix:
+        device: [radxa0, radxa0_tab]
+    steps:
+      - name: Download originals
+        run: |
+          DEV=${{ matrix.device }}
+          DATE=${{ needs.resolve.outputs[format('date_{0}', matrix.device)] }}
+          mkdir -p orig && cd orig
+          python3 - "$DEV" "$DATE" >files.txt <<'EOF'
+          import json, sys, urllib.request
+          dev, date = sys.argv[1], sys.argv[2]
+          with urllib.request.urlopen(
+                  f"https://download.lineageos.org/api/v2/devices/{dev}/builds",
+                  timeout=60) as r:
+              builds = json.load(r)
+          build = next(b for b in builds if b["date"] == date)
+          for f in build["files"]:
+              if f["filename"].endswith(".zip") or f["filename"] in (
+                      "aml_install_package.img", "build-manifest.xml"):
+                  print(f["url"], f["sha256"], f["filename"])
+          EOF
+          cat files.txt
+          while read -r url sha name; do
+            curl -fL --retry 3 -o "$name" "$url"
+            echo "$sha  $name" | sha256sum -c -
+          done <files.txt
+          rm files.txt
+          ls -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orig-${{ matrix.device }}
+          path: orig/
+          if-no-files-found: error
+
+  # Kernel + wifi driver: the long pole (full `make modules` generates
+  # Module.symvers with CRCs the driver must match). The kernel commit
+  # is the EXACT one the nightly was built from (build-manifest.xml),
+  # so the payload always matches the images above.
+  kernel-driver:
+    needs: resolve
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: x96s
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git bc bison flex \
+            libssl-dev libelf-dev gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf
+      - name: Clone kernel at the nightly's exact commit
+        run: |
+          DATE=${{ needs.resolve.outputs.date_radxa0 }}
+          KSHA=${{ inputs.kernel_sha }}
+          if [ -z "$KSHA" ]; then
+            MANIFEST_URL=$(python3 - "$DATE" <<'EOF'
+          import json, sys, urllib.request
+          date = sys.argv[1]
+          with urllib.request.urlopen(
+                  "https://download.lineageos.org/api/v2/devices/radxa0/builds",
+                  timeout=60) as r:
+              builds = json.load(r)
+          build = next(b for b in builds if b["date"] == date)
+          print(next(f["url"] for f in build["files"]
+                     if f["filename"] == "build-manifest.xml"))
+          EOF
+          )
+            KSHA=$(curl -fsL "$MANIFEST_URL" \
+              | python3 -c "import sys,xml.etree.ElementTree as ET
+          t = ET.parse(sys.stdin)
+          p = [x for x in t.getroot().iter('project')
+               if x.get('name') == 'LineageOS/android_kernel_amlogic_linux-4.9']
+          assert p, 'kernel project missing in manifest'
+          print(p[0].get('revision'))")
+          fi
+          echo "kernel sha: $KSHA" | tee kernel-sha.txt
+          git init k && cd k
+          git remote add origin "$KERNEL_URL"
+          git fetch --depth 1 origin "$KSHA" \
+            || git fetch --depth 1 origin "$KERNEL_BRANCH"
+          git checkout FETCH_HEAD
+          git rev-parse HEAD
+      - name: Build kernel modules (live-device config from repo)
+        working-directory: k
+        run: |
+          if head -c2 ../x96s/dotconfig | grep -q $'\x1f\x8b'; then
+            zcat ../x96s/dotconfig > .config
+          else
+            cp ../x96s/dotconfig .config
+          fi
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabihf- olddefconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabihf- modules_prepare
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabihf- \
+            KCFLAGS="-Wno-error -Wno-error=implicit-function-declaration -Wno-error=implicit-int" \
+            modules -j"$(nproc)"
+      - name: Patch and build the RTL8723BS driver
+        run: |
+          git init wlan && cd wlan
+          git remote add origin "$WLAN_URL"
+          git fetch --depth 1 origin "${{ inputs.wlan_sha }}"
+          git checkout FETCH_HEAD
+          python3 ../x96s/apply_x96s.py "$PWD/rtl8723bs"
+          cd rtl8723bs
+          make KSRC="$GITHUB_WORKSPACE/k" ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabihf- CONFIG_POWER_SAVING=n \
+            USER_EXTRA_CFLAGS="-Wno-error -Wno-error=header-guard -Wno-error=address -Wno-error=format -Wno-error=stringop-overflow -Wno-error=stringop-truncation -Wno-error=implicit-fallthrough -Wno-error=unused-but-set-variable -Wno-error=misleading-indentation -Wno-error=comment -Wno-error=return-mismatch"
+          ls -l dhd.ko
+      - name: Verify payload (vermagic + modname, never stripped)
+        run: |
+          cd wlan/rtl8723bs
+          modinfo -F vermagic dhd.ko | tee vermagic.txt
+          grep -q "SMP preempt mod_unload modversions aarch64" vermagic.txt
+          cp dhd.ko "$GITHUB_WORKSPACE/8723bs-4.9.337.ko"
+          { echo "kernel: $(cat $GITHUB_WORKSPACE/kernel-sha.txt)";
+            echo "wlan: ${{ inputs.wlan_sha }}";
+            echo -n "vermagic: "; cat vermagic.txt; } >"$GITHUB_WORKSPACE/build-info-wifi.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-wifi
+          path: |
+            8723bs-4.9.337.ko
+            build-info-wifi.txt
+          if-no-files-found: error
+
+  # Rebuilt u-boot (FIP) with the env-independent cold-boot window.
+  uboot:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: x96s
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git bc bison flex \
+            libssl-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+          for t in gcc ld objcopy objdump ar nm strip readelf; do
+            sudo ln -sf /usr/bin/aarch64-linux-gnu-$t /usr/local/bin/aarch64-none-elf-$t
+          done
+          for t in gcc cpp objcopy objdump ar nm strip readelf ld; do
+            sudo ln -sf /usr/bin/arm-linux-gnueabihf-$t /usr/local/bin/arm-none-eabi-$t
+          done
+          printf '%s\n' '#!/bin/sh' \
+            'exec /usr/bin/aarch64-linux-gnu-gcc "$@" -Wno-error -Wno-int-conversion' \
+            | sudo tee /usr/local/bin/aarch64-none-elf-gcc >/dev/null
+          sudo chmod +x /usr/local/bin/aarch64-none-elf-gcc
+          printf '%s\n' '#!/bin/sh' \
+            'exec /usr/bin/aarch64-linux-gnu-ld.bfd "$@" --no-warn-rwx-segments' \
+            | sudo tee /usr/local/bin/aarch64-none-elf-ld >/dev/null
+          sudo chmod +x /usr/local/bin/aarch64-none-elf-ld
+      - name: Clone sources at pinned commits
+        run: |
+          mkdir -p ub && cd ub
+          git init u-boot && cd u-boot
+          git remote add origin "$UBOOT_URL"
+          git fetch --depth 1 origin "${{ inputs.uboot_sha }}"
+          git checkout FETCH_HEAD
+          git rev-parse HEAD
+          cd ..
+          git init u-boot_build && cd u-boot_build
+          git remote add origin "$UBOOT_BUILD_URL"
+          git fetch --depth 1 origin "${{ inputs.uboot_build_sha }}"
+          git checkout FETCH_HEAD
+          git rev-parse HEAD
+      - name: Apply the cold-boot window patch and build
+        run: |
+          cd ub/u-boot
+          GCC_VER=$(gcc -dumpversion | cut -d. -f1)
+          [ -f include/linux/compiler-gcc"$GCC_VER".h ] \
+            || cp include/linux/compiler-gcc4.h include/linux/compiler-gcc"$GCC_VER".h
+          git apply --check "$GITHUB_WORKSPACE/x96s/patches/uboot-coldboot-window.patch"
+          git apply "$GITHUB_WORKSPACE/x96s/patches/uboot-coldboot-window.patch"
+          git diff --stat
+          make g12a_radxa0_v1_defconfig
+          PATH="/usr/local/bin:$PATH" CROSS_COMPILE=aarch64-none-elf- \
+            make u-boot.bin -j"$(nproc)"
+          strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750'
+          test "$(strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750' || true)" = 1
+          test "$(strings build/u-boot.bin | grep -c 'run try_auto_burn' || true)" = 0
+      - name: Pack FIP
+        run: |
+          cd ub/u-boot_build
+          ./generate-bins-new.sh fip-radxa-zero ../u-boot/build/u-boot.bin g12a_radxa0_v1-base
+          NEWDIR=$(ls -dt uboot-bins-g12a_radxa0_v1-base-* | head -n 1)
+          cp "$NEWDIR/u-boot.bin" "$GITHUB_WORKSPACE/bootloader-x96s.bin"
+          ls -l "$GITHUB_WORKSPACE/bootloader-x96s.bin"
+          { echo "uboot: ${{ inputs.uboot_sha }}";
+            echo "uboot_build: ${{ inputs.uboot_build_sha }}"; } >"$GITHUB_WORKSPACE/build-info-uboot.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-bootloader
+          path: |
+            bootloader-x96s.bin
+            build-info-uboot.txt
+          if-no-files-found: error
+
+  # Patch both original packages per device with the freshly built
+  # payloads. Matrix legs run in parallel once all three producers
+  # are done.
+  patch:
+    needs: [resolve, fetch, kernel-driver, uboot]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        device: [radxa0, radxa0_tab]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: x96s
+      - uses: actions/download-artifact@v4
+        with:
+          name: orig-${{ matrix.device }}
+          path: work/orig
+      - uses: actions/download-artifact@v4
+        with:
+          name: payload-wifi
+          path: work/dl
+      - uses: actions/download-artifact@v4
+        with:
+          name: payload-bootloader
+          path: work/dl
+      - name: Install patcher deps
+        run: sudo apt-get update && sudo apt-get install -y e2fsprogs python3-brotli
+      - name: Patch OTA + burn package
+        run: |
+          cd x96s
+          cp ../work/dl/8723bs-4.9.337.ko 8723bs-4.9.337.ko
+          cp ../work/dl/bootloader-x96s.bin bootloader-x96s.bin
+          ZIP=$(ls ../work/orig/lineage-*.zip)
+          IMG=$(ls ../work/orig/aml_install_package.img)
+          python3 fix_x96s.py "$ZIP"
+          python3 fix_x96s.py "$IMG"
+          ls -l out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fixed-${{ matrix.device }}
+          path: x96s/out/
+          if-no-files-found: error
