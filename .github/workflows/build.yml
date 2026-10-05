@@ -320,31 +320,11 @@ jobs:
         timeout-minutes: 25
         run: |
           cd ub/u-boot
-          echo "nproc: $(nproc)"; df -h . | tail -n 1
           make g12a_radxa0_v1_defconfig
           export PATH="$HOME/.local/bin:$PATH"
-          make u-boot.bin -j"$(nproc)" CROSS_COMPILE=aarch64-none-elf- >/tmp/uboot-make.log 2>&1 &
-          MPID=$!
-          while kill -0 "$MPID" 2>/dev/null; do
-            sleep 60
-            echo "--- alive $(date -u +%H:%M:%S), log lines: $(wc -l </tmp/uboot-make.log)"
-            tail -n 5 /tmp/uboot-make.log
-          done
-          wait "$MPID"; RC=$?
-          echo "--- make rc=$RC, lines: $(wc -l </tmp/uboot-make.log)"
-          if [ "$RC" -ne 0 ]; then
-            echo "--- FULL LOG:"
-            head -n 300 /tmp/uboot-make.log
-            exit "$RC"
-          fi
+          make u-boot.bin -j"$(nproc)" CROSS_COMPILE=aarch64-none-elf-
           test "$(strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750' || true)" = 1
           test "$(strings build/u-boot.bin | grep -c 'run try_auto_burn' || true)" = 0
-      - name: Upload uboot build log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: uboot-make-log
-          path: /tmp/uboot-make.log
       - name: Pack FIP
         run: |
           cd ub/u-boot_build
