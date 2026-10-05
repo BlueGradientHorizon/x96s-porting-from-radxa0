@@ -223,7 +223,7 @@ jobs:
           make KSRC="$GITHUB_WORKSPACE/k" ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- CONFIG_POWER_SAVING=n \
-            USER_EXTRA_CFLAGS="-Wno-error -Wno-error=header-guard -Wno-error=address -Wno-error=format -Wno-error=stringop-overflow -Wno-error=stringop-truncation -Wno-error=implicit-fallthrough -Wno-error=unused-but-set-variable -Wno-error=misleading-indentation -Wno-error=comment -Wno-error=return-mismatch"
+            USER_EXTRA_CFLAGS="-Wno-error -Wno-error=address -Wno-error=format -Wno-error=stringop-overflow -Wno-error=stringop-truncation -Wno-error=implicit-fallthrough -Wno-error=unused-but-set-variable -Wno-error=misleading-indentation -Wno-error=comment -Wno-error=return-mismatch"
           ls -l dhd.ko
       - name: Verify payload (vermagic + modname, never stripped)
         run: |
