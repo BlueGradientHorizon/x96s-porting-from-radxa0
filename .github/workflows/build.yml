@@ -133,11 +133,33 @@ jobs:
         with:
           path: x96s
       - name: Install toolchain
+        timeout-minutes: 10
         run: |
           sudo apt-get update
+          # NOTE: see uboot job - the unversioned aarch64 cross-gcc/ld
+          # on Ubuntu 26.04 are broken stubs; use gcc-14 + probed ld.
           sudo apt-get install -y build-essential git bc bison flex \
-            libssl-dev libelf-dev gcc-aarch64-linux-gnu \
+            libssl-dev libelf-dev gcc-14-aarch64-linux-gnu \
             gcc-arm-linux-gnueabihf
+          GCC14=/usr/bin/aarch64-linux-gnu-gcc-14
+          timeout -k 5 30 "$GCC14" -dumpversion
+          LD_REAL=""
+          for c in /usr/bin/aarch64-linux-gnu-ld.gold /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld; do
+            if timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
+          done
+          [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
+          echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
+          mkdir -p "$HOME/.local/bin"
+          for t in gcc ld objcopy objdump ar nm strip readelf; do
+            ln -sf /usr/bin/aarch64-linux-gnu-$t "$HOME/.local/bin/aarch64-none-elf-$t"
+          done
+          printf '%s\n' '#!/bin/bash' \
+            "[ -x '$GCC14' ] || { echo 'FATAL: $GCC14 gone' >&2; exit 127; }" \
+            "exec '$GCC14' \"\$@\"" \
+            >"$HOME/.local/bin/aarch64-none-elf-gcc"
+          ln -sf "$LD_REAL" "$HOME/.local/bin/aarch64-none-elf-ld"
+          chmod +x "$HOME/.local/bin/aarch64-none-elf-gcc"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
       - name: Clone kernel at the nightly's exact commit
         run: |
           DATE=${{ needs.resolve.outputs.date_radxa0 }}
@@ -178,11 +200,11 @@ jobs:
           else
             cp ../x96s/dotconfig .config
           fi
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          make ARCH=arm64 CROSS_COMPILE=aarch64-none-elf- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- olddefconfig
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          make ARCH=arm64 CROSS_COMPILE=aarch64-none-elf- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- modules_prepare
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          make ARCH=arm64 CROSS_COMPILE=aarch64-none-elf- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- \
             KCFLAGS="-Wno-error -Wno-error=implicit-function-declaration -Wno-error=implicit-int" \
             modules -j"$(nproc)"
@@ -195,7 +217,7 @@ jobs:
           python3 ../x96s/apply_x96s.py "$PWD/rtl8723bs"
           cd rtl8723bs
           make KSRC="$GITHUB_WORKSPACE/k" ARCH=arm64 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-none-elf- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- CONFIG_POWER_SAVING=n \
             USER_EXTRA_CFLAGS="-Wno-error -Wno-error=header-guard -Wno-error=address -Wno-error=format -Wno-error=stringop-overflow -Wno-error=stringop-truncation -Wno-error=implicit-fallthrough -Wno-error=unused-but-set-variable -Wno-error=misleading-indentation -Wno-error=comment -Wno-error=return-mismatch"
           ls -l dhd.ko
@@ -225,38 +247,41 @@ jobs:
         with:
           path: x96s
       - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git bc bison flex \
-            libssl-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
-          for t in gcc ld objcopy objdump ar nm strip readelf; do
-            sudo ln -sf /usr/bin/aarch64-linux-gnu-$t /usr/local/bin/aarch64-none-elf-$t
-          done
-          for t in gcc cpp objcopy objdump ar nm strip readelf ld; do
-            sudo ln -sf /usr/bin/arm-linux-gnueabihf-$t /usr/local/bin/arm-none-eabi-$t
-          done
-          printf '%s\n' '#!/bin/sh' \
-            'exec /usr/bin/aarch64-linux-gnu-gcc "$@" -Wno-error -Wno-int-conversion' \
-            | sudo tee /usr/local/bin/aarch64-none-elf-gcc >/dev/null
-          sudo chmod +x /usr/local/bin/aarch64-none-elf-gcc
-          printf '%s\n' '#!/bin/sh' \
-            'exec /usr/bin/aarch64-linux-gnu-ld.bfd "$@" --no-warn-rwx-segments' \
-            | sudo tee /usr/local/bin/aarch64-none-elf-ld >/dev/null
-          sudo chmod +x /usr/local/bin/aarch64-none-elf-ld
-      - name: Diagnose cross compilers
         timeout-minutes: 10
         run: |
-          echo "== stub content:"
-          cat /usr/bin/aarch64-linux-gnu-gcc-15 || true
-          echo "== try gcc-14 cross package:"
-          sudo apt-get install -y gcc-14-aarch64-linux-gnu || true
-          ls -l /usr/bin/aarch64-linux-gnu-gcc-14 2>/dev/null || true
-          timeout -k 5 30 /usr/bin/aarch64-linux-gnu-gcc-14 -dumpversion; echo "rc=$?"
-          echo "== g++ driver size:"
-          ls -l /usr/bin/aarch64-linux-gnu-g++-15 2>/dev/null || true
-          timeout -k 5 30 /usr/bin/aarch64-linux-gnu-g++-15 -dumpversion; echo "rc=$?"
-          echo "== cc1 present:"
-          ls -l /usr/lib/gcc-cross/aarch64-linux-gnu/*/cc1 2>/dev/null || true
+          sudo apt-get update
+          # NOTE: Ubuntu 26.04's unversioned aarch64 cross-gcc/ld are
+          # broken 80-byte stubs that hang forever (dash ENOEXEC
+          # fallback). Use the versioned gcc-14 + a probed real ld.
+          sudo apt-get install -y build-essential git bc bison flex \
+            libssl-dev gcc-14-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+          GCC14=/usr/bin/aarch64-linux-gnu-gcc-14
+          timeout -k 5 30 "$GCC14" -dumpversion
+          LD_REAL=""
+          for c in /usr/bin/aarch64-linux-gnu-ld.gold /usr/bin/aarch64-linux-gnu-ld.bfd /usr/bin/aarch64-linux-gnu-ld; do
+            if timeout -k 5 30 "$c" --version >/dev/null 2>&1; then LD_REAL="$c"; break; fi
+          done
+          [ -n "$LD_REAL" ] || { echo "FATAL: no working aarch64 ld"; exit 1; }
+          echo "REAL_GCC=$GCC14 REAL_LD=$LD_REAL"
+          if "$LD_REAL" --help 2>/dev/null | grep -q no-warn-rwx-segments; then LX=" --no-warn-rwx-segments"; else LX=""; fi
+          mkdir -p "$HOME/.local/bin"
+          printf '%s\n' '#!/bin/bash' \
+            "[ -x '$GCC14' ] || { echo 'FATAL: $GCC14 gone' >&2; exit 127; }" \
+            "exec '$GCC14' \"\$@\" -Wno-error -Wno-int-conversion" \
+            >"$HOME/.local/bin/aarch64-none-elf-gcc"
+          printf '%s\n' '#!/bin/bash' \
+            "[ -x '$LD_REAL' ] || { echo 'FATAL: $LD_REAL gone' >&2; exit 127; }" \
+            "exec '$LD_REAL' \"\$@\"$LX" \
+            >"$HOME/.local/bin/aarch64-none-elf-ld"
+          for t in objcopy objdump ar nm strip readelf; do
+            ln -sf /usr/bin/aarch64-linux-gnu-$t "$HOME/.local/bin/aarch64-none-elf-$t"
+          done
+          for t in gcc cpp objcopy objdump ar nm strip readelf ld; do
+            ln -sf /usr/bin/arm-linux-gnueabihf-$t "$HOME/.local/bin/arm-none-eabi-$t"
+          done
+          chmod +x "$HOME/.local/bin/aarch64-none-elf-gcc" "$HOME/.local/bin/aarch64-none-elf-ld"
+          timeout -k 5 30 "$HOME/.local/bin/aarch64-none-elf-gcc" -dumpversion
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
       - name: Clone sources at pinned commits
         run: |
           mkdir -p ub && cd ub
@@ -286,20 +311,13 @@ jobs:
           cd ub/u-boot
           echo "nproc: $(nproc)"; df -h . | tail -n 1
           make g12a_radxa0_v1_defconfig
-          PATH="/usr/local/bin:$PATH" CROSS_COMPILE=aarch64-none-elf- \
-            make u-boot.bin -j"$(nproc)" >/tmp/uboot-make.log 2>&1 &
+          export PATH="$HOME/.local/bin:$PATH"
+          make u-boot.bin -j"$(nproc)" CROSS_COMPILE=aarch64-none-elf- >/tmp/uboot-make.log 2>&1 &
           MPID=$!
           while kill -0 "$MPID" 2>/dev/null; do
             sleep 60
             echo "--- alive $(date -u +%H:%M:%S), log lines: $(wc -l </tmp/uboot-make.log)"
             tail -n 5 /tmp/uboot-make.log
-            ps -o pid,etime,cmd -p "$MPID"
-            echo "--- children tree:"
-            ps -ef --forest | grep -B2 -A8 'make u-boot' | head -n 30
-            echo "--- wchan of make and children:"
-            for p in "$MPID" $(pgrep -P "$MPID"); do
-              echo "$p: $(cat /proc/$p/wchan 2>/dev/null) :: $(tr '\0' ' ' </proc/$p/cmdline 2>/dev/null)"
-            done
           done
           wait "$MPID"
           echo "--- make done, tail:"
