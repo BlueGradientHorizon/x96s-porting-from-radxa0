@@ -1,0 +1,59 @@
+diff --git a/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c b/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c
+--- a/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c
++++ b/board/amlogic/g12a_radxa0_v1/g12a_radxa0_v1.c
+@@ -599,4 +599,45 @@
+ #ifdef CONFIG_BOARD_LATE_INIT
++/* X96S: try booting an Armbian-style /boot from SD, then USB.
++ * <spec> is the ext4load target, e.g. "mmc 0:1" (SD) or "usb 0:1".
++ * Vendor ext4 has no 64bit support, so the stick must carry a 32-bit
++ * ext4 (see the converted Armbian image). booti never returns on
++ * success; on any failure we return and the normal eMMC flow continues.
++ * Fully env-independent: knobs are defaulted first, /boot/armbianEnv.txt
++ * only overrides, so future images just work. */
++static void x96s_try_ext_boot(const char *spec)
++{
++	char cmd[128];
++
++	run_command("setenv rootdev UUID=7c427b10-8bbe-486e-835e-4e11fdeda1b0", 0);
++	run_command("setenv console both", 0);
++	run_command("setenv verbosity 1", 0);
++	run_command("setenv fdtfile amlogic/meson-g12a-radxa-zero.dtb", 0);
++
++	sprintf(cmd, "ext4load %s 0x32000000 /boot/armbianEnv.txt", spec);
++	if (run_command(cmd, 0) == 0)
++		run_command("env import -t 0x32000000 ${filesize}", 0);
++
++	/* /boot/Image and /boot/uInitrd are the symlinks Armbian keeps
++	 * across kernel upgrades, so no version is hardcoded here. */
++	sprintf(cmd, "ext4load %s 0x34000000 /boot/Image", spec);
++	if (run_command(cmd, 0))
++		return;
++	sprintf(cmd, "ext4load %s 0x3A000000 /boot/uInitrd", spec);
++	if (run_command(cmd, 0))
++		return;
++	sprintf(cmd, "ext4load %s 0x04080000 /boot/dtb/${fdtfile}", spec);
++	if (run_command(cmd, 0))
++		return;
++
++	/* Same shape as the Armbian mainline bootargs, minus distro-boot vars. */
++	run_command("if test \"${console}\" = serial; "
++		"then setenv consoleargs console=ttyAML0,115200; "
++		"else setenv consoleargs \"console=ttyAML0,115200 console=tty1\"; fi;", 0);
++	run_command("setenv bootargs root=${rootdev} rootwait rootfstype=ext4 "
++		"${consoleargs} consoleblank=0 coherent_pool=2M "
++		"loglevel=${verbosity} cgroup_enable=memory;", 0);
++	run_command("booti 0x34000000 0x3A000000 0x04080000", 0);
++}
+ int board_late_init(void)
+ {
+ 		//update env before anyone using it
+@@ -611,3 +652,9 @@
+ 		run_command("if test ${reboot_mode} = cold_boot; then update 700 750; fi;", 0);
++		/* X96S: SD -> USB -> eMMC. SD is mmc 0, eMMC is mmc 1;
++		 * mmc dev 1 at the end hands the bus back to storeboot. */
++		x96s_try_ext_boot("mmc 0:1");
++		if (run_command("usb start 0", 0) == 0)
++			x96s_try_ext_boot("usb 0:1");
++		run_command("mmc dev 1", 0);
+ 		/*add board late init function here*/
+ #ifndef DTB_BIND_KERNEL
