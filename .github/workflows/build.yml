@@ -174,7 +174,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabihf- \
             KCFLAGS="-Wno-error -Wno-error=implicit-function-declaration -Wno-error=implicit-int" \
             modules -j"$(nproc)"
-      - name: Patch and build the RTL8723BS driver
+      - name: Apply patches and build the RTL8723BS driver
         run: |
           git init wlan && cd wlan
           git remote add origin "$WLAN_URL"
@@ -203,7 +203,8 @@ jobs:
         timeout-minutes: 30
         uses: mxschmitt/action-tmate@v3
 
-  # Rebuilt u-boot (FIP) with the env-independent cold-boot window.
+  # Rebuilt u-boot (FIP) with the env-independent cold-boot window
+  # and the SD -> USB -> eMMC extboot hook.
   uboot:
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -268,14 +269,13 @@ jobs:
           git fetch --depth 1 origin "${{ inputs.uboot_build_sha }}"
           git checkout FETCH_HEAD
           git rev-parse HEAD
-      - name: Apply the cold-boot window patch
+      - name: Apply patches
         run: |
           cd ub/u-boot
           CROSS_GCC_VER=$("$HOME/.local/bin/aarch64-none-elf-gcc" -dumpversion | cut -d. -f1)
           [ -f include/linux/compiler-gcc"$CROSS_GCC_VER".h ] \
             || cp include/linux/compiler-gcc4.h include/linux/compiler-gcc"$CROSS_GCC_VER".h
-          git apply --check "$GITHUB_WORKSPACE/x96s/patches-uboot/uboot-coldboot-window.patch"
-          git apply "$GITHUB_WORKSPACE/x96s/patches-uboot/uboot-coldboot-window.patch"
+          python3 "$GITHUB_WORKSPACE/x96s/apply_patches.py" uboot
           git diff --stat
       - name: Build u-boot.bin
         timeout-minutes: 25
@@ -286,6 +286,7 @@ jobs:
           make u-boot.bin -j"$(nproc)" CROSS_COMPILE=aarch64-none-elf-
           test "$(strings build/u-boot.bin | grep -c 'cold_boot; then update 700 750' || true)" = 1
           test "$(strings build/u-boot.bin | grep -c 'run try_auto_burn' || true)" = 0
+          test "$(strings build/u-boot.bin | grep -c 'ext4load %s 0x34000000 /boot/Image' || true)" = 1
       - name: Pack FIP
         run: |
           cd ub/u-boot_build
