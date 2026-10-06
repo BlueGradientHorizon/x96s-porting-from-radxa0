@@ -1,6 +1,6 @@
 # X96S full pipeline (logic only): fetch original LineageOS images,
-# build the wifi driver + u-boot from source, patch everything with
-# fix_x96s.py, upload all artifacts.
+# build the wifi driver + dispatcher + u-boot from source, patch
+# everything with fix_x96s.py, upload all artifacts.
 #
 # Reusable workflow: called by ci.yml (manual CI build) and
 # release.yml (GitHub release). Never triggered directly.
@@ -192,10 +192,10 @@ jobs:
           cd wlan/rtl8723bs
           modinfo -F vermagic dhd.ko | tee vermagic.txt
           grep -q "SMP preempt mod_unload modversions aarch64" vermagic.txt
-          cp dhd.ko "$GITHUB_WORKSPACE/8723bs-4.9.337.ko"
+          cp dhd.ko "$GITHUB_WORKSPACE/x96s_8723bs-4.9.337.ko"
       - uses: actions/upload-artifact@v7
         with:
-          path: 8723bs-4.9.337.ko
+          path: x96s_8723bs-4.9.337.ko
           archive: false
           if-no-files-found: error
       - name: Debug over SSH on failure
@@ -304,12 +304,47 @@ jobs:
         timeout-minutes: 30
         uses: mxschmitt/action-tmate@v3
 
+  # Wifi dispatcher: tiny static -nostdlib binary (no kernel needed),
+  # runs as the vendor_modprobe oneshot service, try-order over the map.
+  dispatcher:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: x96s
+      - name: Install toolchain
+        timeout-minutes: 10
+        run: |
+          sudo apt-get update
+          # Versioned cross-gcc only (unversioned one is a stub on 26.04).
+          sudo apt-get install -y gcc-15-aarch64-linux-gnu
+          timeout -k 5 30 /usr/bin/aarch64-linux-gnu-gcc-15 -dumpversion
+      - name: Build x96s_wifi
+        run: |
+          cd x96s/dispatcher
+          /usr/bin/aarch64-linux-gnu-gcc-15 -nostdlib -static -Os \
+            -Wall -o x96s_wifi wifi_select.c
+          file x96s_wifi | grep -q "statically linked"
+          test "$(stat -c%s x96s_wifi)" -gt 10000
+          cp x96s_wifi "$GITHUB_WORKSPACE/x96s_wifi"
+          ls -l "$GITHUB_WORKSPACE/x96s_wifi"
+      - uses: actions/upload-artifact@v7
+        with:
+          path: x96s_wifi
+          archive: false
+          if-no-files-found: error
+      - name: Debug over SSH on failure
+        if: failure()
+        timeout-minutes: 30
+        uses: mxschmitt/action-tmate@v3
+
   # Per-device: download originals, patch with the freshly built
   # payloads, upload each file as its own artifact under its original
   # name (no repacking). Matrix legs run in parallel once resolve +
-  # both payloads are done.
+  # all payloads are done.
   build-device:
-    needs: [resolve, kernel-driver, uboot]
+    needs: [resolve, kernel-driver, uboot, dispatcher]
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
@@ -345,19 +380,24 @@ jobs:
           ls -l
       - uses: actions/download-artifact@v8
         with:
-          name: 8723bs-4.9.337.ko
+          name: x96s_8723bs-4.9.337.ko
           path: dl
       - uses: actions/download-artifact@v8
         with:
           name: bootloader-x96s.bin
+          path: dl
+      - uses: actions/download-artifact@v8
+        with:
+          name: x96s_wifi
           path: dl
       - name: Install patcher deps
         run: sudo apt-get update && sudo apt-get install -y e2fsprogs python3-brotli
       - name: Patch OTA + burn package
         run: |
           cd x96s
-          cp ../dl/8723bs-4.9.337.ko 8723bs-4.9.337.ko
+          cp ../dl/x96s_8723bs-4.9.337.ko x96s_8723bs-4.9.337.ko
           cp ../dl/bootloader-x96s.bin bootloader-x96s.bin
+          cp ../dl/x96s_wifi x96s_wifi
           ZIP=$(ls ../orig/lineage-*.zip)
           IMG=$(ls ../orig/aml_install_package.img)
           python3 fix_x96s.py "$ZIP"

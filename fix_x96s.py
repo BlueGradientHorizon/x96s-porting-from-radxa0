@@ -7,9 +7,9 @@ Thin entry point: all logic lives in the x96s_patcher package
 Takes ONE firmware package (type is detected by content):
 
     recovery OTA zip .............. all fixes (dtbo IR overlay,
-                                      X96S remote keymap, early wifi
-                                      insmod + firmware_path chmod,
-                                      RTL8723BS driver, rebuilt u-boot)
+                                      X96S remote keymap, wifi dispatcher
+                                      (VID:PID-selected RTL8723BS driver),
+                                      rebuilt u-boot)
                                       -> out/<stem>-x96s-fix.zip
     Amlogic USB-burn package (AIP) .. IR overlay into dtbo.PARTITION
                                       -> out/<stem>-<device>-x96s-fix.img

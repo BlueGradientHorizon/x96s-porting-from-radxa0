@@ -23,6 +23,8 @@ from .errors import FixError
 # One file operation inside an image:
 # (img_path, new_data, already_fixed(data)->bool,
 #  create_defaults, append_suffix).
+# new_data None + append_suffix None (both None, skip unused) means
+# DELETE: remove the file (missing file = already done, skipped).
 FixOp = tuple[str, bytes | None,
               Callable[[bytes], bool] | None,
               tuple[str, int, int, list[tuple[str, bytes]]] | None,
@@ -46,10 +48,17 @@ def check_tools() -> None:
             "sudo apt install e2fsprogs python3-brotli)" % ", ".join(missing))
 
 
-def run_tool(*args: str) -> str:
-    """Run a local tool, return stdout text."""
+def run_tool(*args: str, merge_stderr: bool = False) -> str:
+    """Run a local tool, return stdout text.
+
+    debugfs prints request errors to stderr while exiting 0, so its
+    callers must pass merge_stderr=True (the shared bad-line scanner
+    in debugfs_request then sees them).
+    """
     try:
-        proc = subprocess.run(args, capture_output=True, timeout=300)
+        proc = subprocess.run(
+            args, stdout=subprocess.PIPE, timeout=300,
+            stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE)
     except FileNotFoundError:
         raise FixError("tool not found: %s" % args[0])
     except subprocess.TimeoutExpired:
@@ -75,11 +84,12 @@ def debugfs_request(work_dir: str, image_name: str, req_lines: list[str],
     if write_mode:
         cmd.append("-w")
     cmd += ["-f", req_file, os.path.join(work_dir, image_name)]
-    out = run_tool(*cmd)
+    out = run_tool(*cmd, merge_stderr=True)
     bad = [ln for ln in out.splitlines()
-           if re.search(r"(?i)(usage:|no such file|not found|couldn.t|"
-                        r"error|failed|invalid)", ln)
-           and "debugfs " not in ln]
+             if re.search(r"(?i)(usage:|no such file|not found|couldn.t|"
+                          r"error|failed|invalid|no space|no free|enospc|"
+                          r"disk full|filesystem full)", ln)
+             and "debugfs " not in ln]
     if bad:
         raise FixError("debugfs: %s" % "; ".join(bad[:3]))
     return out
@@ -120,15 +130,19 @@ def replace_files_in_image(work_dir: str, image_name: str, raw: bytes,
     with open(img_path, "wb") as handle:
         handle.write(raw)
     # pass 1 (read-only): stat + xattr names + current contents for
-    # replace-ops; plain `ls` of the parent dir for create-ops.
-    # Staging files are named by op index (not position), so skipped
-    # ops can't shift the others.
+    # replace-ops; plain `ls` of the parent dir for create-ops and
+    # delete-ops. Staging files are named by op index (not position),
+    # so skipped ops can't shift the others.
     req: list[str] = []
     reps: list[int] = []
     creates: list[int] = []
-    for idx, (path, _new, _skip, cdef, _suffix) in enumerate(ops):
+    deletes: list[int] = []
+    for idx, (path, new, _skip, cdef, suffix) in enumerate(ops):
         if cdef is not None:
             creates.append(idx)
+            continue
+        if new is None and suffix is None:
+            deletes.append(idx)
             continue
         reps.append(idx)
         req += ["stat " + path, "ea_list " + path,
@@ -183,7 +197,7 @@ def replace_files_in_image(work_dir: str, image_name: str, raw: bytes,
             vals.append(ef)
         wanted.append([oidx, path, new_data, mode, uid, gid,
                        [ea for ea, _v in eas], vals, True])
-    if not wanted:
+    if not wanted and not deletes:
         return raw, False
     # pass 2 (read-only): stage xattr values aside before rm
     # (create-ops already staged theirs above)
@@ -198,8 +212,22 @@ def replace_files_in_image(work_dir: str, image_name: str, raw: bytes,
                                               (oidx * 10 + ea_no), path, ea))
     if req:
         debugfs_request(work_dir, image_name, req, False)
-    # pass 3 (write): rm + write + restore mode/owner/xattrs
-    # (rm is skipped for brand-new files)
+    # pass 3 (write): deletes first (they fund the free space the
+    # creates need), then rm + write + restore mode/owner/xattrs.
+    # A missing delete target is already-done, not an error.
+    deleted_any = False
+    for oidx in deletes:
+        path = ops[oidx][0]
+        try:
+            debugfs_request(work_dir, image_name, ["rm " + path], True)
+            deleted_any = True
+        except FixError:
+            parent = path.rsplit("/", 1)[0] or "/"
+            base = path.rsplit("/", 1)[-1]
+            ls_out = debugfs_request(work_dir, image_name,
+                                     ["ls " + parent], False)
+            if re.search(r"\b%s\b" % re.escape(base), ls_out):
+                raise
     req = []
     for oidx, path, new_data, mode, uid, gid, eas, vals, is_new in wanted:
         with open(os.path.join(work_dir, "new%d.bin" % oidx),
@@ -215,9 +243,13 @@ def replace_files_in_image(work_dir: str, image_name: str, raw: bytes,
         for ea_no, (ea, _val) in enumerate(zip(eas, vals)):
             req.append("ea_set -f %s %s %s" % (work_dir + "/ea%d.bin" %
                                               (oidx * 10 + ea_no), path, ea))
-    debugfs_request(work_dir, image_name, req, True)
+    if req:
+        debugfs_request(work_dir, image_name, req, True)
+    if not wanted and not deleted_any:
+        return raw, False
     e2fsck_check(work_dir, image_name)
-    # pass 4 (read-only): verify patched contents byte-for-byte
+    # pass 4 (read-only): verify patched contents byte-for-byte,
+    # and deleted files are really gone.
     req = ["dump %s %s/out%d.bin" % (w[1], work_dir, w[0])
            for w in wanted]
     debugfs_request(work_dir, image_name, req, False)
@@ -226,6 +258,14 @@ def replace_files_in_image(work_dir: str, image_name: str, raw: bytes,
                   "rb") as handle:
             if handle.read() != new_data:
                 raise FixError("verify failed for %s" % path)
+    for oidx in deletes:
+        path = ops[oidx][0]
+        parent = path.rsplit("/", 1)[0] or "/"
+        base = path.rsplit("/", 1)[-1]
+        ls_out = debugfs_request(work_dir, image_name, ["ls " + parent],
+                                 False)
+        if re.search(r"\b%s\b" % re.escape(base), ls_out):
+            raise FixError("verify failed (still present): %s" % path)
     with open(img_path, "rb") as handle:
         return handle.read(), True
 

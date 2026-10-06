@@ -1,54 +1,39 @@
-"""Fix `vendor-wifi-ko`: RTL8723BS driver over dhd.ko in vendor_dlkm."""
+"""Fix `vendor-wifi-ko`: X96S wifi drivers + drop of the dead dhd.ko.
 
-import os
+Deploys every WIFI_DRIVERS payload under its own name (all built with
+internal modname `dhd`; only the dispatcher-selected one loads, so no
+collision) and deletes the stock Broadcom dhd.ko (dead weight on X96S,
+~6.9MB — its removal funds the room for ~3 drivers total).
+"""
 
-from .. import PROJECT_ROOT
-from ..errors import FixError
 from ..ext4 import FixOp
 from ..vendor_img import patch_vendor_image
+from ..wifi_drivers import (WIFI_DRIVERS, load_payload, selinux_xattr)
 from . import Ctx, Entries, FixResult, register
 
-WIFI_KO_CANDIDATES: tuple[str, ...] = (
-    "8723bs-4.9.337.ko",
-)
-_WIFI_KO_CACHE: bytes | None = None
+_KO_XATTR = selinux_xattr("u:object_r:vendor_file:s0")
 
 
-def _load_wifi_ko() -> bytes:
-    """Read the rebuilt 8723bs.ko payload, searched next to CWD/root."""
-    global _WIFI_KO_CACHE
-    if _WIFI_KO_CACHE is not None:
-        return _WIFI_KO_CACHE
-    tried: list[str] = []
-    search_dirs = [os.getcwd(), PROJECT_ROOT]
-    for base in search_dirs:
-        for rel in WIFI_KO_CANDIDATES:
-            path = os.path.join(base, rel)
-            tried.append(path)
-            if os.path.isfile(path):
-                with open(path, "rb") as handle:
-                    _WIFI_KO_CACHE = handle.read()
-                if not _WIFI_KO_CACHE.startswith(b"\x7fELF"):
-                    raise FixError("wifi payload is not an ELF module: %s"
-                                   % path)
-                return _WIFI_KO_CACHE
-    raise FixError("wifi payload not found (tried: %s); build 8723bs.ko "
-                   "from source (see README.md) and place it at "
-                   "8723bs-4.9.337.ko" % ", ".join(tried))
+def _skip_eq(data: bytes):
+    def skip(cur: bytes) -> bool:
+        return cur == data
+    return skip
 
 
-@register("vendor-wifi-ko", "RTL8723BS driver", ("ota",),
-           ("vendor_dlkm.new.dat.br", "vendor_dlkm.transfer.list"))
+@register("vendor-wifi-ko", "X96S wifi drivers, drop dead dhd.ko",
+          ("ota",), ("vendor_dlkm.new.dat.br", "vendor_dlkm.transfer.list"))
 def fix_vendor_dlkm_wifi_ko_ctx(ctx: Ctx, entries: Entries) -> FixResult:
-    """Overwrite dhd.ko (Broadcom, useless on X96S) with 8723bs.ko."""
-    ko = _load_wifi_ko()
-
-    def already_fixed(cur: bytes) -> bool:
-        return cur == ko
-
-    ops: list[FixOp] = [("lib/modules/dhd.ko", ko, already_fixed, None, None)]
+    """Deploy the driver set, delete the Broadcom dhd.ko."""
+    ops: list[FixOp] = []
+    descs: list[str] = []
+    for _vid, _pid, img_path, payload in WIFI_DRIVERS:
+        ko = load_payload(payload, "wifi driver")
+        ops.append((img_path, ko, _skip_eq(ko),
+                    ("0644", 0, 0, [_KO_XATTR]), None))
+        descs.append("%s -> %s" % (payload, img_path))
+    ops.append(("lib/modules/dhd.ko", None, None, None, None))
+    descs.append("dhd.ko removed")
     repl, changed, summary = patch_vendor_image(
         ctx["work_dir"], entries, "vendor_dlkm.new.dat.br",
-        "vendor_dlkm.transfer.list", ops,
-        ["dhd.ko -> 8723bs driver"])
+        "vendor_dlkm.transfer.list", ops, descs)
     return repl, changed, summary

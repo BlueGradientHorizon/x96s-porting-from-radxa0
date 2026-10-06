@@ -45,6 +45,7 @@ from . import dtbo  # noqa: E402
 from . import vendor_tabs  # noqa: E402
 from . import vendor_wifi_rc  # noqa: E402
 from . import vendor_wifi_ko  # noqa: E402
+from . import vendor_wifi_dispatch  # noqa: E402
 from . import bootloader  # noqa: E402
 
 FIXES: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...], FixFunc], ...] \

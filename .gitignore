@@ -10,6 +10,7 @@ flash/
 *.tmp
 *.ko
 *.bin
+x96s_wifi
 *-pass*.txt
 dmesg-*.txt
 logcat-*.txt

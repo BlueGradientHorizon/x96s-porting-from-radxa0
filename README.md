@@ -333,8 +333,14 @@ pinctrl-0 остался литералом). Поэтому в оверлее:
   `g12a_radxa0_v1` + C-хук окна в `board_late_init`; payload
   для скрипта: `bootloader.img` в ПОР, `bootloader.PARTITION`
   в ПОА; ищется рядом с launch dir).
-- `8723bs-4.9.337.ko` — собранный драйвер WiFi (payload для скрипта,
-  ищется рядом с launch dir; НЕ стрипать!).
+- `x96s_8723bs-4.9.337.ko` — собранный драйвер WiFi (payload для скрипта,
+  ищется рядом с launch dir; НЕ стрипать!). Имя в образе —
+  `lib/modules/x96s_8723bs.ko` (внутреннее имя модуля `dhd`, см. §8).
+- `x96s_wifi` — dispatcher ранней загрузки WiFi (static, без libc;
+  исходник в `dispatcher/`, бинарь собирается кросс-тулчейном).
+- `x96s_patcher/wifi_drivers.py` — таблица драйверов (VID:PID → файл
+  в образе → payload) + генератор map; `wifi_multiload.md` — разведка
+  стоковой мультизагрузки (механизм + весь зоопарк драйверов).
 - `apply_patches.py` — один скрипт на все патчи исходников
   (`apply_patches.py <target>` из корня чистых исходников;
   патчи — файлами в `patches-rtl8723bs/` и `patches-uboot/`,
@@ -475,14 +481,24 @@ vs магия `0x27B51956`), печатается в консоль. Бегут 
 - transfer-листы состоят только из `new`-команд (full-OTA, без хэшей),
   updater-script сверяет только имена файлов — поэтому раскладка
   блоков свободна: правим на уровне файлов, листы генерируем заново.
-- `vendor_dlkm.new.dat.br`: `dhd.ko` (Broadcom, тут мертвый груз)
-  перезаписывается нашим драйвером настоящим ext4-драйвером
-  (`debugfs`: штатная аллокация, режим и `security.selinux`
-  сохраняются), затем `e2fsck -f` дочиста. Никаких дыр/leak.
-- `vendor.new.dat.br`: `init.amlogic.wifi_buildin.rc` — ранний
-  `on boot` insmod + `chmod 0666` на ноду `firmware_path`.
-  Обе строки load-bearing (доказано живьём, см. ниже). Плюс
-  `remote.tab2`. Внешние прошивки НЕ нужны.
+- `vendor_dlkm.new.dat.br`: драйверы лежат как `lib/modules/x96s_*.ko`
+  (каждый собран с внутренним именем `dhd`, грузится только выбранный —
+  коллизий нет), мёртвый Broadcom `dhd.ko` удалён (его ~6.9МБ — бюджет
+  под ~3 драйвера). Настоящий ext4-драйвер (`debugfs`: штатная аллокация,
+  режим и `security.selinux` сохраняются), затем `e2fsck -f` дочиста.
+  Никаких дыр/leak. Удаление идёт ДО записи (места в образе впритык —
+  наоборот не влезло бы, словили `verify failed`).
+- `vendor.new.dat.br`: `init.amlogic.wifi_buildin.rc` — oneshot-сервис
+  `x96s_wifi` (`seclabel u:r:vendor_modprobe:s0`, иначе init не стартует:
+  у generic `vendor_file` нет transition) + `wait` SDIO + `start` +
+  `wait` ноды `firmware_path` + `chmod 0666` (всё в init, детерминировано
+  через inotify). Сам dispatcher (`dispatcher/wifi_select.c`: static,
+  без libc — на девайсе bionic, glibc-бинарь не встал бы) грузит драйверы
+  из map `etc/wifi/x96s_wifi.map` по try-order через `finit_module`
+  (sysfs у домена `vendor_modprobe` нет — VID:PID-матчинг переедет
+  в `module_init` каждого драйвера, когда появится второй; метка
+  бинаря — `vendor_toolbox_exec`, entrypoint домена). Плюс `remote.tab2`.
+  Внешние прошивки НЕ нужны.
   MAC нигде не зашит: драйвер берёт efuse-MAC чипа, у каждого
   экземпляра свой.
 
@@ -519,8 +535,11 @@ code 9; стоковая станза `on property:vendor.bcm_wifi=bcm` в
 3/3 холодных бута: DOWN/UP ~t=7.2, probe ~t=7.3), efuse-MAC
 с первого раза, ноль `-84`.
 Если чип разово не ответил — штатный SelfRecovery фреймворка
-ретраит сам. Никаких сервисов, скриптов, поллинга и слипов:
-один insmod в rc + штатные механизмы. Коннект к настроенной точке поднимается
+ретраит сам. Никаких скриптов, поллинга и слипов:
+один oneshot-сервис в rc + штатные механизмы. Таблица драйверов —
+`x96s_patcher/wifi_drivers.py` (единый источник: VID:PID, имя в образе,
+payload): новая ревизия = собранный драйвер + одна строка, dispatcher
+перекомпилировать не надо. Коннект к настроенной точке поднимается
 сам, ~10 с после лаунчера (замерено секундомером; у стока весь
 коннект вообще на t≈85+).
 
@@ -532,9 +551,19 @@ code 9; стоковая станза `on property:vendor.bcm_wifi=bcm` в
    unchanged`). Побайтового равенства между двумя сборками подряд
    нет (mtime перезаписанных файлов в образах = время сборки),
    на установку это не влияет (в листах только `new` без хэшей).
-- Проверено: loop-mount образов самим ядром 4.9 + `insmod` с loop =
-  wlan0 (md5 сходится с payload, сразу WPA-handshake); затем прошивка
+- Проверено: loop-mount образов самим ядром 4.9 + `insmod`
+  с loop = wlan0 (md5 сходится с payload, сразу WPA-handshake); затем прошивка
   грузится, wifi поднимается сам, коннект к домашней точке.
+- Рантайм-загрузка как у стока (см. `wifi_multiload.md`): сток грузит
+  драйвер userspace-библиотекой `libwifi-hal-common-ext.so`
+  (`multi_wifi_load_driver`: sysfs-детект → insmod одного → power →
+  проп-триггер на chmod); у LOS этого расширения нет, поэтому наш
+  dispatcher повторяет ту же схему на `on boot` (HAL усыновляет только
+  раннюю загрузку). Нюансы переноса (все доказаны живьём 2026-10-06):
+  `exec` в `on boot` init молча скипает (обе формы); generic `vendor_file`
+  без transition не стартует ни как `exec`, ни как сервис — нужен
+  `vendor_modprobe` + метка `vendor_toolbox_exec` (см. §10); sysfs
+  у этого домена нет — детект try-order'ом, chmod в init.
 - wififix-метод через sideload УСТАРЕЛ и не работает (в рекавери
   /vendor read-only) — вместо него хирургия образов внутри скрипта.
 - BT: та же микруха по UART/H5 (`hciattach`/`rtk_hciattach`?) — отдельно.
@@ -826,7 +855,8 @@ cd ../u-boot_build
 
 ## 10. Текущее состояние и TODO (обновлять!)
 
-Состояние на 2026-10-05:
+Состояние на 2026-10-06 (полная пересборка с нуля на ubuntu-vm,
+старые репо удалены):
 
 - Загрузчик переделан: окно `update 700 750` вшито C-хуком
   в `board_late_init` (мимо env вообще), header-патч `run try_auto_burn;`
@@ -842,7 +872,7 @@ cd ../u-boot_build
   Тулчейн — версионный `gcc-15` (безверсионный кросс в 26.04 —
   битые 80-байтные стабы, виснут навсегда), шим `compiler-gccN.h`
   строго по версии кросса, tmate-дебарг на падениях. Зелёный
-  прогон есть: 6 артефактов пофайлово (2 зипа + 2 img + ko + bin).
+   прогон есть: 7 артефактов пофайлово (2 зипа + 2 img + ko + bin + dispatcher).
 
 - Прошито и работает: TV `lineage-22.2-20260925-nightly-radxa0-signed-x96s-fix.zip`
   (dtbo + tab2 + wifi: `dhd.ko` с 8723bs внутри, ранний `on boot` insmod
@@ -862,9 +892,43 @@ cd ../u-boot_build
   в исходных LOS-ПОА; CRC пересчитан, parse валиден, слот
   bootloader побайтово равен новому payload). Флоу: burn через
   USB Burning Tool → рекавери с пультом → sideload fixed-ПОР.
-- Payload `8723bs-4.9.337.ko` в корне: single, `CONFIG_POWER_SAVING=n`,
+- Payload `x96s_8723bs-4.9.337.ko` в корне: single, `CONFIG_POWER_SAVING=n`,
   DOWN-UP + синхронный reinit без слипов, modname `dhd`,
-  dummy `firmware_path`, НЕ стрипан (md5 текущего: `753e7edd…`).
+  dummy `firmware_path`, НЕ стрипан (md5 текущего: `27c95153…`;
+  собран 2026-10-06 из ядра `f90a0048` — точный коммит из
+  build-manifest обоих nightlies — + `rockchip_wlan f38306`;
+  размер тот же 3264040). Payload `bootloader-x96s.bin` пересобран
+  там же (`u-boot fd4a7d4` + оба патча, `u-boot.bin` 1101224,
+  FIP 1248624, md5 `f2f40bef…`). Все 4 образа пропатчены заново
+  из оригиналов `flash/los-22.2-radxa0(-tab)/` (2 ПОР testzip OK,
+  в обоих ПОА слот bootloader побайтово равен новому payload).
+- Рантайм-диспетчер WiFi (2026-10-06, РАБОТАЕТ живьём):
+  `dispatcher/wifi_select.c` (static, raw syscalls) + map из
+  `wifi_drivers.py`: oneshot-сервис `x96s_wifi`
+  (`seclabel u:r:vendor_modprobe:s0`) + `wait` SDIO + `start` +
+  `wait` ноды `firmware_path` + `chmod` в rc; один insmod по try-order
+  map, `dhd.ko` из образа удалён. Живой drill: start/trying/up в kmsg
+  на t≈7.0–7.4, probe + reinit + ndev efuse-MAC, ноль `-84`, ноль
+  HAL-ошибок, коннект по DHCP сам (после `svc wifi enable`, см. ниже),
+  20/20 пингов без потерь. По дороге поймано и убито (все живьём):
+  запись до удаления не влезает в 10 свободных блоков (теперь удаление
+  первое); ошибки debugfs в stderr при коде 0 (сканер теперь мержит
+  stderr); `exec` в `on boot` init молча пропускает в ОБЕИХ формах
+  (`wait` рядом работает, ни строки в логах — рабочие exec'ы все
+  в on-property контекстах); голый сервис без seclabel умирает с
+  `incorrect label or no domain transition from u:r:init:s0` (видно
+  только через ручной `ctl.start`, в on-boot init это не логирует);
+  лечение — штатный домен `vendor_modprobe` из `vendor_sepolicy.cil`
+  (transition из init, entrypoint `vendor_toolbox_exec`, sys_module,
+  kmsg, чтение vendor; sysfs у него НЕТ — поэтому dispatcher try-order
+  без sysfs, а chmod остался в init); баг парсера map (0 означал и
+  коммент, и конец — цикл вставал на ведущих `#`; проверен нативом).
+  После двух мертвых прошивок тумблер wifi был ВЫКЛЮЧЕН (`wifi_on=0`,
+  SelfRecovery гасит после циклов без драйвера — проверять первым!);
+  нода `firmware_path` в итоге `0660 system:wifi` (LOS-триггер сам
+  chown'ит — HAL пишет, наш `0666` безвредно шире); `dhd: disagrees
+  about version of symbol printk` — безвредно (модуль тот же,
+  md5 сошёлся). Идемпотентность содержательная (реран = no-op).
 - Серия самопроизвольных ребутов 10-03 оказалась питанием от USB-порта
   ноутбука, не нашим багом: с блоком питания стабильно. pstore при
   падениях был пуст (не паники ядра).
