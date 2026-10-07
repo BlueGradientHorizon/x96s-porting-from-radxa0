@@ -2,11 +2,11 @@
 
 Попытка запустить Armbian под Radxa Zero на стике + завести встроенный
 WiFi RTL8723BS под мейнлайном. Сюда же — всё про порядок загрузки
-SD → USB → eMMC. В `README.md` этой теме не место.
+SD → USB → eMMC. В [README.md](../README.md) этой теме не место.
 
-## 1. Образ
+## Образ
 
-`flash/Armbian_26.8.3_Radxa-zero_trixie_current_6.18.45_minimal.img`
+[flash/Armbian_26.8.3_Radxa-zero_trixie_current_6.18.45_minimal.img](../flash/Armbian_26.8.3_Radxa-zero_trixie_current_6.18.45_minimal.img)
 (1.7 ГБ) — это НЕ прошивка, а raw-образ SD-карты: MBR, один раздел ext4
 (`armbi_root`, старт с 4 МБ), в первых 4 МБ — свой FIP-загрузчик
 (`@AML`, `g12a`, radxa). Внутри: Trixie, ядро 6.18.45 `meson64`,
@@ -16,12 +16,12 @@ DTB `meson-g12a-radxa-zero.dtb`, root по UUID. USB Burning Tool его
 Первые 4 МБ везут Amlogic-FIP (BL2) + мейнлайн U-Boot 2023.07 (строка
 версии в бинарнике) с distro-boot — именно он выставляет `devtype/
 devnum/prefix` и исполняет `boot.scr`. Наш u-boot 2015.01 distro-boot
-не умеет — потому в §3 своя минимальная последовательность вместо
+не умеет — потому в разделе про порядок загрузки ниже в этом файле своя минимальная последовательность вместо
 `boot.scr`.
 
-## 2. Конверт в 32-битный ext4
+## Конверт в 32-битный ext4
 
-Наш u-boot 2015.01 (дерево LineageOS, см. README §8) не понимает
+Наш u-boot 2015.01 (дерево LineageOS, см. [docs/5-bootloader.md](5-bootloader.md)) не понимает
 64-битный ext4 (его драйвер считает групповые дескрипторы по 32 байта —
 `sizeof(struct ext2_block_group)`), а раздел Armbian — 64bit +
 metadata_csum. Прямая карта через `ext4load` не читается никак.
@@ -30,7 +30,7 @@ metadata_csum. Прямая карта через `ext4load` не читаетс
 UUID>` + `cp -a`, первые 4 МБ (FIP+MBR) копируются как есть, в конце
 `e2fsck -f` дочиста. Готовый файл —
 `out/Armbian_26.8.3_Radxa-zero_trixie_current_6.18.45_minimal-x96s.img`
-(тот же размер, e2fsck=0). Оригинал в `flash/` не тронут.
+(тот же размер, e2fsck=0). Оригинал в [flash/](../flash) не тронут.
 
 Конкретно (на VM, Linux; из PowerShell инлайн не гнать — `$` съедается,
 скрипт файлом через `scp`):
@@ -55,12 +55,12 @@ sudo losetup -d $D $S && rmdir $M1 $M2
 cp $W/dst.img $DST && rm -rf $W
 ```
 
-## 3. Порядок загрузки SD → USB → eMMC
+## Порядок загрузки SD → USB → eMMC
 
 Штатный `storeboot` грузит ядро только с eMMC, а `recovery_from_sdcard`
 ищет лишь `aml_autoscript`/`recovery.img` в FAT — воткнутая SD с осью
 молча игнорилась. Решение — второй C-хук в `board_late_init`
-(`patches-uboot/uboot-x96s-extboot.patch`, функция `x96s_try_ext_boot`,
+([patches-uboot/uboot-x96s-extboot.patch](../patches-uboot/uboot-x96s-extboot.patch), функция `x96s_try_ext_boot`,
 мимо env, как окно WorldCup): дефолты root-UUID/console/fdtfile →
 `ext4load` armbianEnv + `env import` → `ext4load` Image/uInitrd/dtb →
 `booti`; сначала `mmc 0:1` (SD), потом `usb start 0` + `usb 0:1`, в конце
@@ -77,14 +77,14 @@ fdt `0x04080000` (Image 37МБ + uInitrd 26МБ влезают с запасом
 по алфавиту на чистое дерево (проверено worktree-прогоном).
 `u-boot.bin` вырос 1100160 → 1101224, FIP 1248112 → 1248624
 (выравнивание после роста BL33; ToC 1:1, в слот 1261424 влезает).
-Payload `bootloader-x96s.bin` обновлён. Фиксер прогнан ТОЛЬКО по
-`flash/los-22.2-radxa0/aml_install_package.img` →
-`out/aml_install_package-radxa0-x96s-fix.img` (dtbo + новый bootloader,
+Payload [bootloader-x96s.bin](../bootloader-x96s.bin) обновлён. Фиксер прогнан ТОЛЬКО по
+[flash/los-22.2-radxa0/aml_install_package.img](../flash/los-22.2-radxa0/aml_install_package.img) →
+[out/aml_install_package-radxa0-x96s-fix.img](../out/aml_install_package-radxa0-x96s-fix.img) (dtbo + новый bootloader,
 остальное N/A; остальные пакеты не тронуты). Живой тест 2026-10-06:
 USB-путь работает (конверт грузится; со старым 64бит-образом — полный
 игнор, как и положено), без носителей — Android как раньше.
 
-## 4. USB-носители: привередливость — это дохлое железо
+## USB-носители: привередливость — это дохлое железо
 
 OEM-флешка 16 ГБ (Alcor): контент побайтово верный, в u-boot не грузится
 НЕ из-за кода — контроллер виснет на чтении (пойман `cmd_age=31s`,
@@ -94,7 +94,7 @@ I/O error, usb reset под живым Linux; повтор того же мес�
 (`do_sleep` в map) — если понадобятся задержки для МЕДЛЕННЫХ,
 но исправных носителей.
 
-## 5. Встроенный WiFi RTL8723BS (запаркован 2026-10-06, не брошен)
+## Встроенный WiFi RTL8723BS (запаркован 2026-10-06, не брошен)
 
 Чип тот же (`024c:b723`, только 2.4 ГГц). Драйвер в образе есть:
 staging `r8723bs.ko` v4.3.5.5 с alias ровно под наш VID:PID, прошивок
@@ -102,7 +102,7 @@ staging `r8723bs.ko` v4.3.5.5 с alias ровно под наш VID:PID, про�
 initialize a non-removable card`, `/sys/bus/sdio/devices` пусто.
 
 Что выяснено сравнением DTB Radxa Zero со стоковым DTB (из
-`stock-dtb-raw.bin` вытащены 3 DTB через `AML_`-заголовок, наш — 2G):
+[stock-dtb-raw.bin](../stock-dtb-raw.bin) вытащены 3 DTB через `AML_`-заголовок, наш — 2G):
 wifi висит на `ffe05000` (как в стоке — `sd2`), а в Radxa-DTB на нём
 висел чужой `emmc-pwrseq` и `cd-gpios`, без `non-removable/sdio-irq/
 keep-power`; `sdio-pwrseq` (п.71) был прибит к SD-слоту. Стоковый
@@ -124,13 +124,13 @@ CMD52/CMD8/CMD5/CMD55/CMD1 — все `-110`, карта нема. Чип на �
 `GPIOV_0` из стокового `sdio_x_clr` ни во что не маппится — в мейнлайне
 V-банка нет вовсе), либо дохлая SDIO-физика/обвязка. Нужен скоп или
 вендорные исходники. Зацепка: BT того же combo-чипа (pin82 уже HIGH,
-UART/H5, `bt_fw/`) — его доводка может вскрыть общий тракт питания
+UART/H5, [bt_fw/](../bt_fw)) — его доводка может вскрыть общий тракт питания
 и заодно решить wifi. Временная сеть — донгл TL-WN725N (`rtl8xxxu`;
 на минималке нет ни `nmtui`, ни `nmcli` — только `armbian-config`;
 сломанный `/etc/netplan/20-eth-fixed-mac.yaml` с пустым `ethernets:`
 лечится удалением строки — ethernet'а на стике физически нет).
 
-## 6. Live-workflow (без перезаливок образа)
+## Live-workflow (без перезаливок образа)
 
 Каждая перезаливка + настройка — 30+ минут, поэтому все правки —
 `fdtput`/`dtc` прямо в `/boot/dtb` на живой системе (в образе есть)
