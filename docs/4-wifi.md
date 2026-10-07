@@ -110,7 +110,7 @@ payload): новая ревизия = собранный драйвер + одн
   у этого домена нет — детект try-order'ом, chmod в init.
 - wififix-метод через sideload УСТАРЕЛ и не работает (в рекавери
   /vendor read-only) — вместо него хирургия образов внутри скрипта.
-- BT: та же микруха по UART/H5 (`hciattach`/`rtk_hciattach`?) — отдельно.
+- BT заведён отдельным фиксом `vendor-bt` — см. [docs/8-bluetooth.md](8-bluetooth.md).
 
 ### Сборка драйвера с нуля (repro)
 

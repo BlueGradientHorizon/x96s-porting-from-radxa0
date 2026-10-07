@@ -30,7 +30,9 @@
 - [remote.tab2](../remote.tab2) — исправленный таб нашего пульта (эталонная копия;
   в скрипт текст встроен).
 - [stock-dtb-raw.bin](../stock-dtb-raw.bin) — стоковый DTB-референс.
-- [bt_fw/](../bt_fw) — BT-прошивки и конфиг со стока (см. раздел про BT в [docs/6-pitfalls-status.md](6-pitfalls-status.md)).
+- [bt_fw/](../bt_fw) — payload'ы BT-фикса `vendor-bt` со стока
+  (прошивки, `rtkbt.conf`, RTK `libbt-vendor.so`; детали —
+  в [docs/8-bluetooth.md](8-bluetooth.md)).
 - [flash/](../flash) — всё для прошивки:
   [X96S_P_20200903-1822.img](../flash/X96S_P_20200903-1822.img) (сток), [sbx_x96s_2gb_2.4Ghz_atv_9_16.img](../flash/sbx_x96s_2gb_2.4Ghz_atv_9_16.img)
   (slimBOXtv-кастом), [super_empty.img](../flash/super_empty.img), подпапки [los-22.2-radxa0/](../flash/los-22.2-radxa0)
@@ -81,7 +83,8 @@ vs магия `0x27B51956`), печатается в консоль. Бегут 
 - `vendor_img.patch_vendor_image` — общий хелпер vendor-фиксов
   (brotli → замена → сжатие quality 6 → перегенерация листа);
 - [fixes/](../x96s_patcher/fixes) — по модулю на фикс (`dtbo`, `vendor_tabs`,
-  `vendor_wifi_rc`, `vendor_wifi_ko`, `bootloader`), контракт
+  `vendor_wifi_rc`, `vendor_wifi_ko`, `vendor_wifi_dispatch`, `vendor_bt`,
+  `bootloader`), контракт
   `func(ctx, entries) -> (replacements, changed, summary)`.
   Ключи `entries` — КАНОНИЧЕСКИЕ имена файлов (`dtbo.img`,
   `vendor.new.dat.br`, …), общие для обоих типов пакетов: пайплайн
@@ -129,6 +132,9 @@ vs магия `0x27B51956`), печатается в консоль. Бегут 
     хэшей) → brotli-encode (quality 6, размер как у стока).
     Подпись zip ломается штатно (recovery: `Signature verification
     failed` → Yes, как для любых кастомных зипов).
+  - `vendor-bt`: BT RTL8723BS (замена `libbt-vendor.so` на стоковую
+    RTK + `rtkbt.conf`/`rtl8723bs_fw/_config` + снос 17 мёртвых BCM `.hcd`).
+    Полная история — в [docs/8-bluetooth.md](8-bluetooth.md).
 - НЕ ТРОГАЮТСЯ: остальные `*.new.dat.br`, `boot.img`, `dtb.img`
   (store с crc32!), `vbmeta`, `bootloader`, updater-script,
   transfer-листы. Исходник только читается.

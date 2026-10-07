@@ -1,8 +1,9 @@
 """x96s_patcher - modular LineageOS firmware patcher for the X96S stick.
 
 Patches LineageOS radxa0/radxa0_tab firmware zips (dtbo IR overlay,
-X96S remote keymap, RTL8723BS wifi driver) into flashable
-out/<name>-x96s-fix.zip. See README.md for the full story.
+X96S remote keymap, RTL8723BS wifi driver + dispatcher, RTL8723BS
+bluetooth) into flashable out/<name>-x96s-fix.zip. See README.md
+for the full story.
 
 Layout:
 

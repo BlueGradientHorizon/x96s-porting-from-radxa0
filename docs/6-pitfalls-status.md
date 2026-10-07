@@ -1,4 +1,4 @@
-# Ловушки, текущее состояние и BT-задел
+# Ловушки и текущее состояние
 
 ## Ловушки (набитые шишки)
 
@@ -157,16 +157,13 @@
 
 Следующие шаги:
 
-1. BT RTL8723BS (разведка со стока снята, второй заход не нужен):
-   UART `/dev/ttyS1`, H5, rtkbt, прошивки в [bt_fw/](../bt_fw) (раздел про BT — ниже в этом файле).
-2. Публикация на GitHub (репо вычищено, [.gitignore](../.gitignore) есть).
+1. Публикация на GitHub (репо вычищено, [.gitignore](../.gitignore) есть).
 
-## Задел на BT (делать ПОСЛЕ wifi)
+## Bluetooth (закрыт 2026-10-07, вся история — в [docs/8-bluetooth.md](8-bluetooth.md))
 
-Разведка со стока (второй заход не нужен): BT — UART `/dev/ttyS1`,
-протокол H5 (`BtDeviceNode=?/dev/ttyS1:H5` в [rtkbt.conf](../bt_fw/rtkbt.conf)), стек rtkbt.
-Прошивки в [bt_fw/](../bt_fw): `rtl8723bs_config`/`rtl8723bs_fw`,
-`rtl8723b_config`/`rtl8723b_fw`, [rtkbt.conf](../bt_fw/rtkbt.conf). Combo-чип: BT-адрес идёт
-следующим за WLAN (одна антенна). На Lineage BT краш-лупится в фоне
-(`com.android.bluetooth`, HciHal tombstones) — ожидаемо, пока не сделан.
+BT RTL8723BS работает из коробки: фикс `vendor-bt` (RTK H5-либа
+со стока + `bt_fw/` + снос BCM `.hcd`), TV и TAB прошиты и проверены
+живём (ON с `SYSTEM_BOOT`, адрес чипа, ноль крашей, спаривание,
+A2DP-звук в наушниках). Не работает передача файлов — выключена
+во фреймворке (`opp=false`, вне скоупа патчера).
 
