@@ -72,6 +72,12 @@ IR_MAPS: list[dict[str, Any]] = [
 FIXED_TAB2 = """custom_name = amlogic-remote-2
 custom_code = 0xfe01
 release_delay = 80
+fn_key_scancode = 0x00
+cursor_left_scancode = 0x51
+cursor_right_scancode = 0x50
+cursor_up_scancode = 0x16
+cursor_down_scancode = 0x1a
+cursor_ok_scancode = 0x13
 
 key_begin
 \t0x40 116
@@ -87,6 +93,8 @@ key_begin
 \t0x10 114
 \t0x18 115
 \t0x43 139
+\t0x00 100
+\t0x44 66
 key_end
 """
 

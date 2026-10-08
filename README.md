@@ -25,7 +25,7 @@ python3 fix_x96s.py flash/los-*/aml_install_package.img
 ## Статус
 
 Работает из коробки (проверено холодными бутами, см. [docs/6-pitfalls-status.md](docs/6-pitfalls-status.md)):
-пульт ИК (DTBO + tab2), WiFi (ранний `on boot` insmod, efuse-MAC, ноль `-84`)
+пульт ИК (DTBO + tab2: курсор мыши с тогглом, KD шлёт F8), WiFi (ранний `on boot` insmod, efuse-MAC, ноль `-84`)
 и BT RTL8723BS (RTK H5-стек со стока, адрес чипа, спаривание, A2DP;
 детали — в [docs/8-bluetooth.md](docs/8-bluetooth.md)).
 

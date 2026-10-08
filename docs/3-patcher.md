@@ -126,10 +126,9 @@ vs магия `0x27B51956`), печатается в консоль. Бегут 
     повторный прогон видит rc-ноду и пропускает. Размер файла не
     меняется (добивка нулями).
   - `vendor-tabs`: `vendor.new.dat.br` → brotli-decode → raw ext4 →
-    поиск единственного [remote.tab2](../remote.tab2) (custom 0xFE01, 755 байт) →
-    замена на исправленный (219 байт + пробелы до исходной длины,
-    блоки и transfer.list те же — там только `new`-диапазоны без
-    хэшей) → brotli-encode (quality 6, размер как у стока).
+    замена `etc/remote.tab2` на исправленный (настоящий ext4-драйвер
+    через debugfs, transfer.list перегенерируется; там только
+    `new`-диапазоны без хэшей) → brotli-encode (quality 6).
     Подпись zip ломается штатно (recovery: `Signature verification
     failed` → Yes, как для любых кастомных зипов).
   - `vendor-bt`: BT RTL8723BS (замена `libbt-vendor.so` на стоковую
