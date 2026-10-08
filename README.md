@@ -24,7 +24,7 @@ python3 fix_x96s.py flash/los-*/aml_install_package.img
 
 ## Статус
 
-Работает из коробки (проверено холодными бутами, см. [docs/6-pitfalls-status.md](docs/6-pitfalls-status.md)):
+Работает из коробки (проверено холодными бутами, см. [docs/status.md](docs/status.md)):
 пульт ИК (DTBO + tab2: курсор мыши с тогглом, KD шлёт F8), WiFi (ранний `on boot` insmod, efuse-MAC, ноль `-84`)
 и BT RTL8723BS (RTK H5-стек со стока, адрес чипа, спаривание, A2DP;
 детали — в [docs/8-bluetooth.md](docs/8-bluetooth.md)).
@@ -41,7 +41,8 @@ python3 fix_x96s.py flash/los-*/aml_install_package.img
 | [docs/3-patcher.md](docs/3-patcher.md) | §7–8: инвентарь, архитектура [fix_x96s.py](fix_x96s.py), реестр, почему vendor не едет в ПОА |
 | [docs/4-wifi.md](docs/4-wifi.md) | §8-WiFi + §11: сборка драйвера, включение, мультизагрузка |
 | [docs/5-bootloader.md](docs/5-bootloader.md) | §8-u-boot + §13: сборка загрузчика, burn-пакеты, WorldCup/env |
-| [docs/6-pitfalls-status.md](docs/6-pitfalls-status.md) | §9 + §10 + §12: 21 ловушка, текущее состояние/TODO |
+| [docs/traps.md](docs/traps.md) | §9 + §12: 21 ловушка |
+| [docs/status.md](docs/status.md) | §10: текущее состояние/TODO |
 | [docs/7-armbian.md](docs/7-armbian.md) | SD-конверт, extboot, USB-носители |
 | [docs/8-bluetooth.md](docs/8-bluetooth.md) | BT RTL8723BS целиком: стек, фикс `vendor-bt`, задел на диспетчер |
 | [docs/9-led.md](docs/9-led.md) | Светодиоды: синий (gpioleds-оверлей) и красный (standby AOCPU) |

@@ -96,7 +96,7 @@ payload): новая ревизия = собранный драйвер + одн
    нет (mtime перезаписанных файлов в образах = время сборки),
    на установку это не влияет (в листах только `new` без хэшей).
 - Проверено: loop-mount образов самим ядром 4.9 + `insmod`
-  с loop = wlan0 (md5 сходится с payload, сразу WPA-handshake); затем прошивка
+  с loop = wlan0 (содержимое сходится с payload, сразу WPA-handshake); затем прошивка
   грузится, wifi поднимается сам, коннект к домашней точке.
 - Рантайм-загрузка как у стока (см. приложение в конце этого файла): сток грузит
   драйвер userspace-библиотекой `libwifi-hal-common-ext.so`
@@ -106,7 +106,7 @@ payload): новая ревизия = собранный драйвер + одн
   раннюю загрузку). Нюансы переноса (все доказаны живьём 2026-10-06):
   `exec` в `on boot` init молча скипает (обе формы); generic `vendor_file`
   без transition не стартует ни как `exec`, ни как сервис — нужен
-   `vendor_modprobe` + метка `vendor_toolbox_exec` (нюансы — в [docs/6-pitfalls-status.md](6-pitfalls-status.md)); sysfs
+   `vendor_modprobe` + метка `vendor_toolbox_exec` (нюансы — в [docs/traps.md](traps.md)); sysfs
   у этого домена нет — детект try-order'ом, chmod в init.
 - wififix-метод через sideload УСТАРЕЛ и не работает (в рекавери
   /vendor read-only) — вместо него хирургия образов внутри скрипта.
@@ -255,7 +255,7 @@ FAIL(-84)`, `cpwm polling timeout`) вплоть до разрыва линка;
 Вис на лого 2026-10-04: вечный логотип при проверенно чистом архиве
 (причина не установлена — заливка? `/data`?); лечение — полный перепрошив
 через burn mode. TAB живьём 2026-10-04: новый дизайн доказан и там
-(см. [docs/6-pitfalls-status.md](6-pitfalls-status.md)). Кирпич-цикл от грязного шатдауна: счётчики RescueParty,
+(см. [docs/status.md](status.md)). Кирпич-цикл от грязного шатдауна: счётчики RescueParty,
 лечится вайпом `/data`; не дёргать кабель при висящих ядерных операциях.
 
 
@@ -349,7 +349,7 @@ map `etc/wifi/x96s_wifi.map` → `wait` ноды `firmware_path` → `chmod`.
 Таблица драйверов — [x96s_patcher/wifi_drivers.py](../x96s_patcher/wifi_drivers.py) (VID:PID брать из
 стокового `modules.alias`).
 
-Три ограничения переноса, все доказанные живьём (детали и пруфы — в [docs/6-pitfalls-status.md](6-pitfalls-status.md); `0666` вместо событийного `0660` — LOS не ставит
+Три ограничения переноса, все доказанные живьём (детали и пруфы — в [docs/traps.md](traps.md); `0666` вместо событийного `0660` — LOS не ставит
 `wlan.driver.status=ok` нашему драйверу, проверено отказом с 0644):
 
 1. `exec` в `on boot` init этой ветки молча скипает (обе формы синтаксиса) —
@@ -406,13 +406,13 @@ map `etc/wifi/x96s_wifi.map` → `wait` ноды `firmware_path` → `chmod`.
    побольше; verity vendor_dlkm нет (доказано: наши изменённые образы
    грузятся), риск — максимум незалившаяся прошивка, не кирпич.
 5. **Проверка** (стандарт, без скидок): патчер по ОРИГИНАЛАМ →
-   `testzip`, md5 файла в образе = payload, e2fsck чист, реран = no-op →
+   `testzip`, файл в образе побайтово = payload, e2fsck чист, реран = no-op →
    loop-mount + insmod живым ядром 4.9 (до прошивки!) → прошивка →
    `dmesg | grep x96s_wifi` (`trying` → `finit err` на чужом →
    `trying` → `up` на своём), `wlan0` с efuse-MAC, `-84` = 0, ноль
    HAL-ошибок, пинг без потерь. Первым делом проверить `wifi_on`:
    SelfRecovery гасит тумблер после мёртвых бутов (`svc wifi enable`).
-6. **Доки.** Обновить [docs/6-pitfalls-status.md](6-pitfalls-status.md) (состояние и журналы — там).
+6. **Доки.** Обновить [docs/status.md](status.md) (состояние и журналы — там).
 
 ## Методика (repro)
 

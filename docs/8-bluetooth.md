@@ -24,7 +24,7 @@ Burn-пакет `X96S_P_20200903-1822.img`: парсер `x96s_patcher.amlogic` 
 слот `vendor` (sparse) → `simg2img` → loop-mount на VM (методика —
 в приложении [docs/4-wifi.md](4-wifi.md)). Найдено:
 
-- `lib/libbt-vendor.so` (161488 байт, md5 `8d070231…`) — Realtek
+- `lib/libbt-vendor.so` — Realtek
   (`RTKBT_RELEASE_NAME: 20190311_BT_ANDROID_9.0`, H5-машина
   `h5_*_timer`, `rtk_get_bt_firmware`, `hci_get_h5_int_interface`);
   рядом generic `lib/hw/android.hardware.bluetooth@1.0-impl.so`
@@ -32,7 +32,7 @@ Burn-пакет `X96S_P_20200903-1822.img`: парсер `x96s_patcher.amlogic` 
 - `etc/bluetooth/rtkbt.conf` (`BtDeviceNode=?/dev/ttyS1:H5`,
   побайтово = [bt_fw/rtkbt.conf](../bt_fw/rtkbt.conf)),
   `firmware/rtl8723bs_fw` + `rtl8723bs_config` (побайтово =
-  [bt_fw/](../bt_fw), md5 `37210afd…` / `ab690442…`).
+  [bt_fw/](../bt_fw)).
 - `bin/rtkcmd`, сервис `vendor.bluetooth-1-0`
   (`etc/init/android.hardware.bluetooth@1.0-service.rc`), VINTF-запись
   `android.hardware.bluetooth@1.0 hwbinder IBluetoothHci/default`
@@ -84,7 +84,7 @@ Burn-пакет `X96S_P_20200903-1822.img`: парсер `x96s_patcher.amlogic` 
   - bind поверх несуществующего файла невозможен — только dir-bind
     стейджинга (для `etc/bluetooth` и `firmware` целиком,
     со всем исходным содержимым);
-  - `mount|grep` после `stop/start` врал — проверять `md5sum` цели
+  - `mount|grep` после `stop/start` врал — проверять сверкой содержимого цели
     + `/proc/PID/root/...` + `maps` (либа грузится лениво,
     по `initialize()`);
   - `RtkBtsnoopDump=true` НЕ ВКЛЮЧАТЬ: `.cfa_rtk` HAL писать не может
@@ -113,13 +113,13 @@ Burn-пакет `X96S_P_20200903-1822.img`: парсер `x96s_patcher.amlogic` 
 ## Прошивка и верификация
 
 - TV `lineage-22.2-20260925-nightly-radxa0-signed-x96s-fix.zip`
-  (md5 `da505d8b…`, sideload `Total xfer: 0.96x` — штатно; первая
+  (sideload `Total xfer: 0.96x` — штатно; первая
   попытка висела на ~0% — рекавери ждало ручного `Apply from ADB`).
   Холодный бут: BT ON сам (`SYSTEM_BOOT`, t≈30 с), адрес `...:60:8D`,
   `Bluetooth crashed 0 times`, discovery-движок жив, WiFi цел
   (`wlan0` UP, ноль `-84`). 4 vendor-файла на девайсе = payload.
   Счёт: bind-mount бут + прошитый бут = 2/2 ON.
-- TAB `...-radxa0_tab-signed-x96s-fix.zip` (md5 `3fb00ff6…`, тот же фикс)
+- TAB `...-radxa0_tab-signed-x96s-fix.zip` (тот же фикс)
   прошит юзером сам: спаривание с телефоном работает в обе стороны,
   стик видит Xiaomi TV за стеной с полным EIR/UUID, телефон видит
   `Radxa Zero` (`SCAN_MODE_CONNECTABLE_DISCOVERABLE`). Финал: звук
