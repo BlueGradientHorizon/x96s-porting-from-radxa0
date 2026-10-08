@@ -9,6 +9,7 @@ Takes ONE firmware package (type is detected by content):
     recovery OTA zip .............. all fixes (dtbo IR+LED overlay,
                                       X96S remote keymap, wifi dispatcher
                                       (VID:PID-selected RTL8723BS driver),
+                                      RTL8723BS bluetooth,
                                       rebuilt u-boot)
                                       -> out/<stem>-x96s-fix.zip
     Amlogic USB-burn package (AIP) .. IR overlay into dtbo.PARTITION

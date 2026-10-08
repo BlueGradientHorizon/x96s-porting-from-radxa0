@@ -136,6 +136,21 @@ vs магия `0x27B51956`), печатается в консоль. Бегут 
   - `vendor-bt`: BT RTL8723BS (замена `libbt-vendor.so` на стоковую
     RTK + `rtkbt.conf`/`rtl8723bs_fw/_config` + снос 17 мёртвых BCM `.hcd`).
     Полная история — в [docs/8-bluetooth.md](8-bluetooth.md).
+  Закрытый эксперимент `vendor-adb` (2026-10-08, удалён): попытка
+  авто-adb+root. Стоковый механизм найден (в стоковом `default.prop`,
+  секция BOOTIMAGE, вшито `persist.sys.usb.config=adb` — весь авто-adb
+  стока держится на нём), но порт упёрся в три стены: `setprop` этих
+  пропсов из vendor-rc запрещён sepolicy (`vendor_init` denied на
+  `persist.sys.usb.config`/`service.adb.root`, avc-доказательство
+  в dmesg), `setprop` из `on boot` детерминированно вешает загрузку
+  на статичном лого (V1/V3), а `ro.adb.secure=1` лежит в system/EROFS
+  (vendor не перебивает).   Итог: авто-adb возможен, но без авторута
+  и без снятия RSA-тапа — смысла ноль, фикс удалён. Vendor-путями
+  не возвращаться. Теоретически полное решение (авторут + no-auth +
+  pre-launcher одной строкой) возможно только пересборкой system
+  (EROFS через `mkfs.erofs` с сохранением меток + подгонка под размер
+  логического раздела): `ro.adb.secure=0`, `ro.secure=0`. Отложено,
+  не сегодня.
 - НЕ ТРОГАЮТСЯ: остальные `*.new.dat.br`, `boot.img`, `dtb.img`
   (store с crc32!), `vbmeta`, `bootloader`, updater-script,
   transfer-листы. Исходник только читается.
