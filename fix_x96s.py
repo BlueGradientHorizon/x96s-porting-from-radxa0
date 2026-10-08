@@ -6,7 +6,7 @@ Thin entry point: all logic lives in the x96s_patcher package
 
 Takes ONE firmware package (type is detected by content):
 
-    recovery OTA zip .............. all fixes (dtbo IR overlay,
+    recovery OTA zip .............. all fixes (dtbo IR+LED overlay,
                                       X96S remote keymap, wifi dispatcher
                                       (VID:PID-selected RTL8723BS driver),
                                       rebuilt u-boot)

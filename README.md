@@ -28,6 +28,8 @@ python3 fix_x96s.py flash/los-*/aml_install_package.img
 пульт ИК (DTBO + tab2: курсор мыши с тогглом, KD шлёт F8), WiFi (ранний `on boot` insmod, efuse-MAC, ноль `-84`)
 и BT RTL8723BS (RTK H5-стек со стока, адрес чипа, спаривание, A2DP;
 детали — в [docs/8-bluetooth.md](docs/8-bluetooth.md)).
+Синий LED заведён стоковой логикой (gpioleds-оверлей в dtbo);
+красный — standby-диод AOCPU (подробности — в [docs/9-led.md](docs/9-led.md)).
 
 ## Доки
 
@@ -42,6 +44,7 @@ python3 fix_x96s.py flash/los-*/aml_install_package.img
 | [docs/6-pitfalls-status.md](docs/6-pitfalls-status.md) | §9 + §10 + §12: 21 ловушка, текущее состояние/TODO |
 | [docs/7-armbian.md](docs/7-armbian.md) | SD-конверт, extboot, USB-носители |
 | [docs/8-bluetooth.md](docs/8-bluetooth.md) | BT RTL8723BS целиком: стек, фикс `vendor-bt`, задел на диспетчер |
+| [docs/9-led.md](docs/9-led.md) | Светодиоды: синий (gpioleds-оверлей) и красный (standby AOCPU) |
 
 Per-unit данные (серийники, MAC, CID eMMC, IP) в доках маскируются
 (`XX:XX:XX`, `<из DHCP>`). Правила работы агента — в [AGENTS.md](AGENTS.md).
