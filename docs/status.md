@@ -13,7 +13,9 @@
   весь пайплайн (оригиналы по API Lineage + ядро с коммита из
   манифеста + драйвер + u-boot с [patches-uboot/](../patches-uboot) + [fix_x96s.py](../fix_x96s.py),
   джобы `resolve`/`kernel-driver`/`uboot`/`build-device`),
-  [ci.yml](../.github/workflows/ci.yml) — ручной запуск, [release.yml](../.github/workflows/release.yml) — ручной релиз.
+   [ci.yml](../.github/workflows/ci.yml) — ручной запуск, [release.yml](../.github/workflows/release.yml) — ручной релиз,
+   [armbian-aip.yml](../.github/workflows/armbian-aip.yml) — ручной запуск
+   (Armbian + оба LOS-ПОА → два mainline-AIP в артефакты).
   Тулчейн — версионный `gcc-15` (безверсионный кросс в 26.04 —
   битые 80-байтные стабы, виснут навсегда), шим `compiler-gccN.h`
   строго по версии кросса, tmate-дебарг на падениях. Зелёный
@@ -108,7 +110,12 @@
 
 Следующие шаги:
 
-1. Публикация на GitHub (репо вычищено, [.gitignore](../.gitignore) есть).
+1. Armbian на eMMC — ЗАКРЫТО (2026-10-09): burn
+   `out/aml_install_package-armbian-emmc-x96s-v2.img` (bootloader mainline
+   FIP + rootfs в super@1174МиБ) → MBR в сектор 0 живьём → бут 6.18.45
+   прямо с eMMC, без SD. Детали — в [docs/7-armbian.md](7-armbian.md).
+2. Публикация на GitHub (репо вычищено, [.gitignore](../.gitignore) есть).
+2. Публикация на GitHub (репо вычищено, [.gitignore](../.gitignore) есть).
 
 ## Bluetooth (закрыт 2026-10-07, вся история — в [docs/8-bluetooth.md](8-bluetooth.md))
 

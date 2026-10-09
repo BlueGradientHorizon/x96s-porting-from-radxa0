@@ -1,0 +1,120 @@
+# Armbian AIP: download the Armbian Radxa Zero image + both LOS burn
+# packages (radxa0, radxa0_tab), swap their bootloaders for the mainline
+# U-Boot FIP via make_mainline_uboot_aip.py, upload both outputs.
+#
+# Manual run from the Actions tab. No push/PR triggers by design
+# (multi-hundred-megabyte downloads).
+#
+# NOTE: ubuntu-26.04 runner image (GA since 2026-09-17).
+
+on:
+  workflow_dispatch:
+    inputs:
+      los_date:
+        description: "LineageOS nightly date (YYYYMMDD) or 'latest'"
+        required: false
+        default: "latest"
+      armbian_image:
+        description: "Armbian image key (dl.armbian.com/radxa-zero/<key>)"
+        required: false
+        default: "Trixie_current_minimal"
+
+permissions:
+  contents: read
+
+jobs:
+  armbian-aip:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: x96s
+      # Resolve the nightly date per device once, so both legs use the
+      # exact same build (a new nightly mid-run must not split them).
+      - id: dates
+        run: |
+          python3 - "${{ inputs.los_date }}" >>"$GITHUB_OUTPUT" <<'EOF'
+          import json, sys, urllib.request
+          want = sys.argv[1]
+          for dev in ("radxa0", "radxa0_tab"):
+              with urllib.request.urlopen(
+                      f"https://download.lineageos.org/api/v2/devices/{dev}/builds",
+                      timeout=60) as r:
+                  builds = json.load(r)
+              dates = [b["date"] for b in builds]
+              date = dates[0] if want == "latest" else want
+              if date not in dates:
+                  sys.exit(f"no {dev} build for date {date} "
+                           f"(available: {', '.join(dates[:4])}...)")
+              print(f"date_{dev}={date}", )
+              print(dev, "->", date, file=sys.stderr)
+          EOF
+      - name: Download LOS burn packages (sha256-verified, never uploaded)
+        run: |
+          mkdir -p orig/radxa0 orig/radxa0_tab
+          for DEV in radxa0 radxa0_tab; do
+            case $DEV in
+              radxa0) DATE=${{ steps.dates.outputs.date_radxa0 }} ;;
+              radxa0_tab) DATE=${{ steps.dates.outputs.date_radxa0_tab }} ;;
+            esac
+            python3 - "$DEV" "$DATE" >"orig/$DEV/url.txt" <<'EOF'
+          import json, sys, urllib.request
+          dev, date = sys.argv[1], sys.argv[2]
+          with urllib.request.urlopen(
+                  f"https://download.lineageos.org/api/v2/devices/{dev}/builds",
+                  timeout=60) as r:
+              builds = json.load(r)
+          build = next(b for b in builds if b["date"] == date)
+          f = next(f for f in build["files"]
+                   if f["filename"] == "aml_install_package.img")
+          print(f["url"], f["sha256"], f["filename"])
+          EOF
+            cat "orig/$DEV/url.txt"
+            cd "orig/$DEV"
+            while read -r url sha name; do
+              curl -fL --retry 3 -o "$name" "$url"
+              echo "$sha  $name" | sha256sum -c -
+            done <url.txt
+            rm url.txt
+            cd ../..
+          done
+          find orig -type f | sort
+      - name: Download Armbian image (sha256-verified, never uploaded)
+        run: |
+          KEY="${{ inputs.armbian_image }}"
+          curl -fL --retry 3 -o armbian.img.xz \
+            "https://dl.armbian.com/radxa-zero/$KEY"
+          curl -fL --retry 3 -o armbian.sha \
+            "https://dl.armbian.com/radxa-zero/$KEY.sha"
+          cat armbian.sha
+          echo "$(awk '{print $1}' armbian.sha)  armbian.img.xz" \
+            | sha256sum -c -
+          unxz -v armbian.img.xz
+          ls -l armbian.img
+      - name: Patch both burn packages
+        run: |
+          cd x96s
+          python3 make_mainline_uboot_aip.py \
+            "$GITHUB_WORKSPACE/orig/radxa0/aml_install_package.img" \
+            "$GITHUB_WORKSPACE/armbian.img"
+          python3 make_mainline_uboot_aip.py \
+            "$GITHUB_WORKSPACE/orig/radxa0_tab/aml_install_package.img" \
+            "$GITHUB_WORKSPACE/armbian.img"
+          ls -l out/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aip-uboot-mainline-radxa0
+          path: x96s/out/aml_install_package-uboot-mainline-radxa0.img
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aip-uboot-mainline-radxa0_tab
+          path: x96s/out/aml_install_package-uboot-mainline-radxa0_tab.img
+          archive: false
+          if-no-files-found: error
+      - name: Debug over SSH on failure
+        if: failure()
+        timeout-minutes: 30
+        uses: mxschmitt/action-tmate@v3
