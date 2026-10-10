@@ -1,0 +1,27 @@
+X96S Armbian 6.18 port, part 2: timer API.
+Tree: openlumi/rtl8723bs @ 832c0dc. Guarded, harmless below 6.18.
+
+--- a/include/osdep_service_linux.h
++++ b/include/osdep_service_linux.h
+@@ -24,2 +24,12 @@
+ #include <linux/slab.h>
+ #include <linux/module.h>
++#include <linux/timer.h>
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++/* from_timer() was removed from linux/timer.h, provide it locally */
++#ifndef from_timer
++#define from_timer(var, callback_timer, timer_fieldname) \
++	container_of(callback_timer, typeof(*var), timer_fieldname)
++#endif
++#endif
++
+@@ -333,5 +343,7 @@
+ __inline static void _cancel_timer(_timer *ptimer, u8 *bcancelled)
+ {
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++	*bcancelled = timer_delete_sync(&ptimer->t) == 1 ? 1 : 0;
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+ 	*bcancelled = del_timer_sync(&ptimer->t) == 1 ? 1 : 0;
+ #else

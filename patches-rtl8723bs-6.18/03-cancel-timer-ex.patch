@@ -1,0 +1,16 @@
+X96S Armbian 6.18 port, part 3: _cancel_timer_ex.
+Tree: openlumi/rtl8723bs @ 832c0dc. Guarded, harmless below 6.18.
+
+--- a/include/osdep_service.h
++++ b/include/osdep_service.h
+@@ -362,7 +362,9 @@
+ __inline static unsigned char _cancel_timer_ex(_timer *ptimer)
+ {
+ 	u8 bcancelled;
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++	return timer_delete_sync(&ptimer->t);
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+ 	return del_timer_sync(&ptimer->t);
+ #else

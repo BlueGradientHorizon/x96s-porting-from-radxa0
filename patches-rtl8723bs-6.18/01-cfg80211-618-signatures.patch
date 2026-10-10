@@ -1,0 +1,25 @@
+X96S Armbian 6.18 port, part 1: cfg80211 signature changes.
+Tree: openlumi/rtl8723bs @ 832c0dc (openwrt-build). Guarded, harmless below 6.18.
+
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -4246,4 +4246,10 @@
+ static int cfg80211_rtw_change_beacon(struct wiphy *wiphy, struct net_device *ndev,
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++		struct cfg80211_ap_update *update)
++{
++	struct cfg80211_beacon_data *info = &update->beacon;
++#else
+ 		struct cfg80211_beacon_data *info)
+ {
++#endif
+ 	int ret = 0;
+ 	_adapter *adapter = (_adapter *)rtw_netdev_priv(ndev);
+@@ -4574,4 +4580,7 @@
+ static int cfg80211_rtw_set_monitor_channel(struct wiphy *wiphy
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++	, struct net_device *dev
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+ 	, struct cfg80211_chan_def *chandef
+ #else

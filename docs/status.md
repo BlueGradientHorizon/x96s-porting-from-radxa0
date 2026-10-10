@@ -114,6 +114,10 @@
    `out/aml_install_package-armbian-emmc-x96s-v2.img` (bootloader mainline
    FIP + rootfs в super@1174МиБ) → MBR в сектор 0 живьём → бут 6.18.45
    прямо с eMMC, без SD. Детали — в [docs/7-armbian.md](7-armbian.md).
+   1a. Armbian-WiFi — ПРОРЫВ 2026-10-10 (линк доказан: enum + assoc +
+   DHCP + пинг/внешка без потерь; стабильность ОТКРЫТА — клин staging-
+   драйвера под sustained-трафиком; собран v5.2.17.1 под 6.18, патчи —
+   в [patches-rtl8723bs-6.18/](../patches-rtl8723bs-6.18); рецепт и разбор — в [docs/7-armbian.md](7-armbian.md)).
 2. Публикация на GitHub (репо вычищено, [.gitignore](../.gitignore) есть).
 2. Публикация на GitHub (репо вычищено, [.gitignore](../.gitignore) есть).
 
